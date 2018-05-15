@@ -3,7 +3,7 @@
 if [ ! -d "lib" ]; then
     mkdir lib
 fi
-if [ ! -d "lib/python-moses" ]; then
+if [ ! -d "lib/moses" ]; then
     wget -P lib/python-moses https://raw.githubusercontent.com/moses-smt/mosesdecoder/master/scripts/tokenizer/python-tokenizer/moses.py
 fi
 
