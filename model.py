@@ -1,5 +1,4 @@
 import torch.nn as nn
-from torch.autograd import Variable
 from torch import FloatTensor
 import numpy as np
 
