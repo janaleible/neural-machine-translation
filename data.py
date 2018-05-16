@@ -1,7 +1,8 @@
 import collections
 import os
 from typing import List
-from moses_tokenizer import MosesTokenizer
+from lib.moses.moses import MosesTokenizer
+
 import json
 
 import pickle
@@ -10,10 +11,6 @@ Sentence = collections.namedtuple('Sentence', 'id, english, french')
 
 
 class ParallelData(object):
-    """
-    Read in parallel dataset from HLT-NAACL
-    http://www.cs.unt.edu/~rada/wpt
-    """
 
     def __init__(self, path: str, tokenize: bool):
 
