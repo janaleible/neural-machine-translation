@@ -16,8 +16,8 @@ lib/subword-nmt-master/apply_bpe.py -c data/bpe --vocabulary data/vocab.fr --voc
 
 python2 lib/nematus/build_dictionary.py data/BPE/train/train.BPE.en data/BPE/train/train.BPE.fr
 
-lib/subword-nmt-master/apply_bpe.py -c data/bpe --vocabulary data/vocab.en --vocabulary-threshold 50 < data/val.en > data/BPE/val/val.BPE.en
-lib/subword-nmt-master/apply_bpe.py -c data/bpe --vocabulary data/vocab.fr --vocabulary-threshold 50 < data/val.fr > data/BPE/val/val.BPE.fr
+lib/subword-nmt-master/apply_bpe.py -c data/bpe --vocabulary data/vocab.en --vocabulary-threshold 50 < data/val.en > data/BPE/valid/val.BPE.en
+lib/subword-nmt-master/apply_bpe.py -c data/bpe --vocabulary data/vocab.fr --vocabulary-threshold 50 < data/val.fr > data/BPE/valid/val.BPE.fr
 
 lib/subword-nmt-master/apply_bpe.py -c data/bpe --vocabulary data/vocab.en --vocabulary-threshold 50 < data/test_2017_flickr.en > data/BPE/test/test.BPE.en
 lib/subword-nmt-master/apply_bpe.py -c data/bpe --vocabulary data/vocab.fr --vocabulary-threshold 50 < data/test_2017_flickr.fr > data/BPE/test/test.BPE.fr
