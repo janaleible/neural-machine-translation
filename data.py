@@ -22,6 +22,7 @@ class ParallelData(TranslationDataset):
         # fields
         english = Field(batch_first=True, lower=True)
         french = Field(include_lengths=True, batch_first=True, init_token="<SOS>", eos_token="<EOS>", pad_token="<PAD>", lower=True)
+
         self.english = english
         self.french = french
 

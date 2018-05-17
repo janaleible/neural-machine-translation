@@ -1,6 +1,6 @@
 import torch
 import collections
-from model import PositionalEncoder
+from model import PositionalEncoder, Attention
 import logging
 from torch import optim
 from data import ParallelData
@@ -8,9 +8,14 @@ import os
 import pickle
 import random
 
+from torch import FloatTensor
+import numpy as np
+import torch
+from torch.autograd import Variable
 from torchtext.data import BucketIterator, Field, interleave_keys
 from torchtext.data import Iterator
 from torch import nn
+import torch.nn.functional as F
 
 logger = logging.getLogger(__name__)
 Sentence = collections.namedtuple('Sentence', 'id, english, french')
@@ -106,7 +111,7 @@ def train_iterations(path, dimension, embedding_dimension, n_iterations, batch_s
 
     iterations_per_epoch = (len(training_data) // batch_size) + 1
 
-    encoder = PositionalEncoder(dimension, embedding_dimension, n_french, 10, dropout)
+    encoder = PositionalEncoder(dimension, embedding_dimension, n_french, 100, dropout)
     encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
     # decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
     criterion = nn.NLLLoss()
@@ -128,11 +133,33 @@ def train_iterations(path, dimension, embedding_dimension, n_iterations, batch_s
         print("target batch")
         print(batch.trg.size())
 
-        for time in range(input_sentences.size()[1]):
+        batch_size, time_size = input_sentences.size()
+        print("time: ", time_size)
+        encoder_outputs = []
+        average_embedding = Variable(FloatTensor(torch.zeros(2 * embedding_dimension))).repeat(batch_size, 1)
+        for time in range(time_size):
             positional_embedding = encoder(input_sentences[:, time], time + 1)
             print("encoder output size")
             print(positional_embedding.size())
+            encoder_outputs.append(positional_embedding)
+            average_embedding += positional_embedding
 
+        average_embedding /= time_size
+
+        attention = Attention(embedding_dimension)
+        attention_vector = attention(encoder_outputs, average_embedding)
+        print("attention vector size")
+        print(attention_vector.size())
+
+        # print(training_data.french.vocab.stoi["<EOS>"])
+        # # decoder
+        # lstm = nn.LSTM(input_size=2*embedding_dimension, hidden_size=2*embedding_dimension, output_size=n_french)
+        # hidden = average_embedding
+        # ending_criterion = np.ones((batch_size, 1))
+        # while any(ending_criterion):
+        #     output, hidden = lstm(attention_vector[:, time], hidden)
+        #     predicted_words = F.softmax(output)
+        #     max_indices = torch.max(predicted_words)
 
 
 if __name__ == "__main__":
