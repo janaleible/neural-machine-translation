@@ -1,6 +1,8 @@
 import torch.nn as nn
 from torch import FloatTensor
 import numpy as np
+import torch
+from torch.autograd import Variable
 
 
 class PositionalEncoder(nn.Module):
@@ -16,13 +18,18 @@ class PositionalEncoder(nn.Module):
         self.log = log
         self.embedding = nn.Embedding(vocabulary_size, embedding_dimension)
         self.relu = nn.ReLU
-        self.positional_encodings = FloatTensor(self.precompute_positional_encoding())
+        self.positional_encodings = Variable(FloatTensor(self.precompute_positional_encoding()))
 
     def forward(self, input, input_position):
 
+        batch_size = input.size()[0]
         embedding = self.embedding(input)
-        positional_encoding = self.positional_encodings[input_position]
-        positional_embedding = embedding + positional_encoding
+        print("embedding size")
+        print(embedding.size())
+        positional_encoding = self.positional_encodings[input_position].repeat(batch_size, 1)
+        print("positional encoding size")
+        print(positional_encoding.size())
+        positional_embedding = torch.cat((embedding, positional_encoding), 1)
 
         return positional_embedding
 

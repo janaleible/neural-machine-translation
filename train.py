@@ -115,19 +115,30 @@ def train_iterations(path, dimension, embedding_dimension, n_iterations, batch_s
 
         batch = next(iter(train_iterator))
 
+        input_sentences = batch.src[0]
+        input_lengths = batch.src[1]
+
         # UNCOMMENT TO PRINT EXAMPLES
-        # print("source batch")
-        # print(batch.src[0])
-        # print("source sentence lengths without padding")
-        # print(batch.src[1])
-        # print("target batch")
-        # print(batch.trg)
+        print("source batch")
+        print(batch.src[0].size())
+        print()
+        print("source sentence lengths without padding")
+        print(batch.src[1].size())
+        print()
+        print("target batch")
+        print(batch.trg.size())
+
+        for time in range(input_sentences.size()[1]):
+            positional_embedding = encoder(input_sentences[:, time], time + 1)
+            print("encoder output size")
+            print(positional_embedding.size())
+
 
 
 if __name__ == "__main__":
     dimension = 50
     embedding_dimension = 50
     batch_size = 32
-    iterations = 10
+    iterations = 1
     path_to_data = "data/"
     train_iterations(path_to_data, dimension, embedding_dimension, iterations, batch_size)
