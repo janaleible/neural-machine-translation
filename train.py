@@ -1,6 +1,6 @@
 import torch
 import collections
-from model import PositionalEncoder, Attention
+from model import PositionalEncoder, Attention, Decoder
 import logging
 from torch import optim
 from data import ParallelData
@@ -151,15 +151,15 @@ def train_iterations(path, dimension, embedding_dimension, n_iterations, batch_s
         print("attention vector size")
         print(attention_vector.size())
 
-        # print(training_data.french.vocab.stoi["<EOS>"])
-        # # decoder
-        # lstm = nn.LSTM(input_size=2*embedding_dimension, hidden_size=2*embedding_dimension, output_size=n_french)
-        # hidden = average_embedding
-        # ending_criterion = np.ones((batch_size, 1))
-        # while any(ending_criterion):
-        #     output, hidden = lstm(attention_vector[:, time], hidden)
-        #     predicted_words = F.softmax(output)
-        #     max_indices = torch.max(predicted_words)
+        print(training_data.french.vocab.stoi["<EOS>"])
+        # decoder
+        decoder = Decoder(2*embedding_dimension, 2*embedding_dimension, n_french, average_embedding)
+        ending_criterion = [False] * batch_size # np.ones((batch_size, 1))
+        hidden = average_embedding
+        while not all(ending_criterion):
+            output, hidden = decoder(torch.unsqueeze(attention_vector[:, time], dim=1))
+            predicted_words = F.softmax(output)
+            max_indices = torch.max(predicted_words)
 
 
 if __name__ == "__main__":
