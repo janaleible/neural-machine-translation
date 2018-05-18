@@ -123,6 +123,8 @@ def train_iterations(path, dimension, embedding_dimension, n_iterations, batch_s
         input_sentences = batch.src[0]
         input_lengths = batch.src[1]
 
+        target_sentences = batch.trg
+
         # UNCOMMENT TO PRINT EXAMPLES
         print("source batch")
         print(batch.src[0].size())
@@ -146,20 +148,27 @@ def train_iterations(path, dimension, embedding_dimension, n_iterations, batch_s
 
         average_embedding /= time_size
 
-        attention = Attention(embedding_dimension)
-        attention_vector = attention(encoder_outputs, average_embedding)
-        print("attention vector size")
-        print(attention_vector.size())
 
         print(training_data.french.vocab.stoi["<EOS>"])
         # decoder
-        decoder = Decoder(2*embedding_dimension, 2*embedding_dimension, n_french, average_embedding)
+        decoder = Decoder(1, 2*embedding_dimension, n_french)
         ending_criterion = [False] * batch_size # np.ones((batch_size, 1))
-        hidden = average_embedding
-        while not all(ending_criterion):
-            output, hidden = decoder(torch.unsqueeze(attention_vector[:, time], dim=1))
+        hidden = torch.unsqueeze(average_embedding, 0)
+        attention = Attention(embedding_dimension)
+        context = torch.randn(hidden.size())
+        for time in range(input_sentences.size()[1]):
+            attention_vector = attention(encoder_outputs, hidden)
+            print("attention vector size")
+            print(attention_vector.size())
+            output, hidden, context = decoder(
+                torch.unsqueeze(torch.unsqueeze(target_sentences[:, time], 0), 2).float(),
+                hidden,
+                context
+            )
+            # torch.unsqueeze(attention_vector[:, time], dim=1)
             predicted_words = F.softmax(output)
             max_indices = torch.max(predicted_words)
+
 
 
 if __name__ == "__main__":

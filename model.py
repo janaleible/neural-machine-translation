@@ -69,7 +69,7 @@ class Attention(nn.Module):
 
         for i in range(sentence_length):
             attention_weight = torch.bmm(input[i].view(batch_size, 1, embedding_dimension), hidden.view(batch_size, embedding_dimension, 1))
-            attention_weights[:, i] = attention_weight
+            attention_weights[:, i] = torch.squeeze(torch.squeeze(attention_weight, 1), 1)
 
         attention_weights = F.softmax(attention_weights)
 
@@ -82,20 +82,16 @@ class Attention(nn.Module):
 
 class Decoder(nn.Module):
 
-    def __init__(self, input_size, hidden_size, output_size, initial_hidden_state):
+    def __init__(self, input_size, hidden_size, output_size):
         super(Decoder, self).__init__()
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size)
-        # hidden = average_embedding
-        self.previous_hidden_state = initial_hidden_state
-        # TODO: not sure how to initialise the hidden state. Maybe not do that here but as an input to the forward function
         self.lstm2output = nn.Linear(hidden_size, output_size)
 
-    def forward(self, input):
-        lstm = self.lstm(input, self.previous_hidden_state)
-        self.previous_hidden_state = lstm
+    def forward(self, input, hidden, context):
 
-        output = self.lstm2output(lstm)
+        result, (hidden, context) = self.lstm(input, (hidden, context))
+        output = self.lstm2output(result)
 
-        return output
+        return output, hidden, context
 
 
