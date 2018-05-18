@@ -57,7 +57,8 @@ class Attention(nn.Module):
 
     def __init__(self, embedding_dimension):
         super(Attention, self).__init__()
-        self.attention_layer = nn.Linear(2 * embedding_dimension, 2 * embedding_dimension)
+        self.attention_layer = nn.Linear(4 * embedding_dimension, 2 * embedding_dimension)
+
 
     def forward(self, input, hidden):
 
@@ -77,7 +78,10 @@ class Attention(nn.Module):
         for i in range(sentence_length):
             weighted_sum += torch.squeeze(torch.unsqueeze(attention_weights[:, i], 1) * input[i])
 
-        return weighted_sum
+        concatenation = torch.cat((torch.unsqueeze(weighted_sum, 0), hidden), 2)
+        result = self.attention_layer(concatenation)
+
+        return result
 
 
 class Decoder(nn.Module):

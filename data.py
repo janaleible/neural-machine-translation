@@ -20,7 +20,7 @@ class ParallelData(TranslationDataset):
         self.french_word_counts = collections.Counter()
 
         # fields
-        english = Field(batch_first=True, lower=True)
+        english = Field(batch_first=True, lower=True, include_lengths=True, pad_token='<PAD>')
         french = Field(include_lengths=True, batch_first=True, init_token="<SOS>", eos_token="<EOS>", pad_token="<PAD>", lower=True)
 
         self.english = english
