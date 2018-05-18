@@ -1,5 +1,5 @@
 import collections
-from model import PositionalEncoder, Attention, Decoder
+from model import NeuralMachineTranslator
 import logging
 from torch import optim
 from data import ParallelData
@@ -62,7 +62,15 @@ def load_data(f):
     return data
 
 
-def train_iterations(path, dimension, embedding_dimension, n_iterations, batch_size, dropout=0.3, learning_rate=0.01):
+def train(batch, model):
+
+    output, loss = model(batch)
+
+    # TODO: update parameters?
+    return loss
+
+
+def train_epochs(path, embedding_dimension, n_epochs, batch_size, max_sentence_length, dropout=0.3, learning_rate=0.01):
 
     logger.info("Start training..")
 
@@ -91,7 +99,6 @@ def train_iterations(path, dimension, embedding_dimension, n_iterations, batch_s
     n_english = len(training_data.english.vocab)
     n_french = len(training_data.french.vocab)
 
-
     # iterators
     train_iterator = BucketIterator(dataset=training_data, batch_size=batch_size,
                                     sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=True)
@@ -102,73 +109,32 @@ def train_iterations(path, dimension, embedding_dimension, n_iterations, batch_s
 
     iterations_per_epoch = (len(training_data) // batch_size) + 1
 
-    encoder = PositionalEncoder(dimension, embedding_dimension, n_french, 100, dropout)
-    encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
-    # decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
+    model = NeuralMachineTranslator(embedding_dimension, n_french, max_sentence_length, dropout,
+                 1, n_english, 2*embedding_dimension)
+    optimizer = optim.SGD(model.parameters(), lr=learning_rate)
 
-    output_softmax = nn.Softmax(dim=2)
+    for epoch in range(1, n_epochs + 1):
 
-    attention = Attention(embedding_dimension)
-    criterion = nn.NLLLoss(size_average=False, reduce=False)
+        epoch_loss = 0
+        for iteration in range(iterations_per_epoch):
 
-    for iteration in range(1, n_iterations + 1):
-
-        batch = next(iter(train_iterator))
-
-        input_sentences = batch.src[0]
-        input_lengths = batch.src[1]
-
-        target_sentences = batch.trg[0]
-        target_lengths = batch.trg[1]
-
-        french_sentence_length = input_sentences.size()[1]
-        english_sentence_length = target_sentences.size()[1]
-
-        mask = torch.zeros((batch_size, english_sentence_length))
-        for sentence in range(batch_size):
-            sentence_mask = [0] * int(target_lengths[sentence]) + [1] * (english_sentence_length - int(target_lengths[sentence]))
-            mask[sentence, :] = torch.LongTensor(sentence_mask)
-
-
-        batch_size, time_size = input_sentences.size()
-        encoder_outputs = []
-        average_embedding = Variable(FloatTensor(torch.zeros(2 * embedding_dimension))).repeat(batch_size, 1)
-        for time in range(time_size):
-            positional_embedding = encoder(input_sentences[:, time], time + 1)
-            encoder_outputs.append(positional_embedding)
-            average_embedding += positional_embedding
-
-        average_embedding /= time_size
-
-
-        decoder = Decoder(1, 2*embedding_dimension, n_english)
-        hidden = torch.unsqueeze(average_embedding, 0)
-
-        context = torch.randn(hidden.size())
-        loss = 0
-        for time in range(english_sentence_length):
-            hidden = attention(encoder_outputs, hidden)
-            output, hidden, context = decoder(
-                torch.unsqueeze(torch.unsqueeze(target_sentences[:, time], 0), 2).float(),
-                hidden,
-                context
-            )
-
-            output = output_softmax(output)
-
-            batch_loss = criterion(torch.squeeze(output), target_sentences[:, time])
-            batch_loss.masked_fill_(mask[:, time].byte(), 0.)
-            loss += batch_loss.sum() / batch_size
-
-        loss.backward()
-
-
+            # get next batch
+            batch = next(iter(train_iterator))
+            loss = train(batch, model)
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss
 
 
 if __name__ == "__main__":
-    dimension = 50
+
+    path_to_data = "data/"
+
+    # hyperparameters
     embedding_dimension = 50
     batch_size = 32
-    iterations = 1
-    path_to_data = "data/"
-    train_iterations(path_to_data, dimension, embedding_dimension, iterations, batch_size)
+    epochs = 1
+    max_sentence_length = 150
+
+    # train
+    train_epochs(path_to_data, embedding_dimension, epochs, batch_size, max_sentence_length)

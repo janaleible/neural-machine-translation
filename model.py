@@ -6,21 +6,88 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 
 
+class NeuralMachineTranslator(nn.Module):
+    def __init__(self, embedding_dimension, vocabulary_size, sentence_length, dropout,
+                 input_size_decoder, output_size_decoder, hidden_size_decoder):
+        super(NeuralMachineTranslator, self).__init__()
+
+        self.embedding_dimension = embedding_dimension
+        self.vocabulary_size = vocabulary_size
+        self.sentence_length = sentence_length
+        self.dropout = dropout
+        self.input_size_decoder = input_size_decoder
+        self.output_size_decoder = output_size_decoder
+        self.hidden_size_decoder = hidden_size_decoder
+        self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout)
+        self.attention = Attention(embedding_dimension)
+        self.decoder = Decoder(input_size_decoder, hidden_size_decoder, output_size_decoder)
+        self.softmax = nn.Softmax(dim=2)
+        self.criterion = nn.NLLLoss(size_average=False, reduce=False)
+
+    def forward(self, input):
+
+        input_sentences = input.src[0]
+        input_lengths = input.src[1]
+
+        batch_size = input_sentences.size()[0]
+
+        target_sentences = input.trg[0]
+        target_lengths = input.trg[1]
+
+        french_sentence_length = input_sentences.size()[1]
+        english_sentence_length = target_sentences.size()[1]
+
+        mask = torch.zeros((batch_size, english_sentence_length))
+        for sentence in range(batch_size):
+            sentence_mask = [0] * int(target_lengths[sentence]) + [1] * (
+                    english_sentence_length - int(target_lengths[sentence]))
+            mask[sentence, :] = torch.LongTensor(sentence_mask)
+
+        batch_size, time_size = input_sentences.size()
+        encoder_outputs = []
+        average_embedding = Variable(FloatTensor(torch.zeros(2 * self.embedding_dimension))).repeat(batch_size, 1)
+        for time in range(french_sentence_length):
+            positional_embedding = self.encoder(input_sentences[:, time], time + 1)
+            encoder_outputs.append(positional_embedding)
+            average_embedding += positional_embedding
+
+        average_embedding /= time_size
+
+        hidden = torch.unsqueeze(average_embedding, 0)
+
+        context = torch.randn(hidden.size())
+        loss = 0
+        for time in range(english_sentence_length):
+            hidden = self.attention(encoder_outputs, hidden)
+            output, hidden, context = self.decoder(
+                torch.unsqueeze(torch.unsqueeze(target_sentences[:, time], 0), 2).float(),
+                hidden,
+                context
+            )
+
+            output = self.softmax(output)
+            batch_loss = self.criterion(torch.squeeze(output), target_sentences[:, time])
+            batch_loss.masked_fill_(mask[:, time].byte(), 0.)
+            loss += batch_loss.sum() / batch_size
+
+        return output, loss
+
+
+
 class PositionalEncoder(nn.Module):
-    def __init__(self, dimension, embedding_dimension, vocabulary_size, sentence_length, dropout, log=False):
+    def __init__(self, embedding_dimension, vocabulary_size, sentence_length, dropout):
         super(PositionalEncoder, self).__init__()
 
         self.sentence_length = sentence_length
-        self.dimension = dimension
         self.embedding_dimension = embedding_dimension
         self.vocabulary_size = vocabulary_size
-        self.dropout = nn.Dropout
 
-        self.log = log
+        # TODO: use dropout
+        self.dropout = nn.Dropout(p=dropout)
+
         self.input_embedding = nn.Embedding(vocabulary_size, embedding_dimension)
 
         self.relu = nn.ReLU
-        # self.positional_encodings = Variable(FloatTensor(self.precompute_positional_encoding()))
         self.max_positions = 100
         self.positional_embedding = nn.Embedding(self.max_positions, embedding_dimension)
 
@@ -36,29 +103,12 @@ class PositionalEncoder(nn.Module):
 
         return positional_embedding
 
-    # def precompute_positional_encoding(self):
-    #
-    #     if self.log:
-    #         print("Precomputing positional encodings..")
-    #
-    #     positional_encodings = np.zeros((self.sentence_length, self.embedding_dimension))
-    #     for pos in range(self.sentence_length, 2):
-    #         embedding_vector = np.array(range(1, self.embedding_dimension + 1)) / self.embedding_dimension
-    #         positional_encoding_vector = np.ones((self.embedding_dimension, 1)) * pos / 10000**embedding_vector
-    #         even_positional_encoding_vector = np.sin(positional_encoding_vector)
-    #         uneven_positional_encoding_vector = np.cos(positional_encoding_vector)
-    #         positional_encodings[pos] = even_positional_encoding_vector
-    #         positional_encodings[pos + 1] = uneven_positional_encoding_vector
-    #
-    #     return positional_encodings
-
 
 class Attention(nn.Module):
 
     def __init__(self, embedding_dimension):
         super(Attention, self).__init__()
         self.attention_layer = nn.Linear(4 * embedding_dimension, 2 * embedding_dimension)
-
 
     def forward(self, input, hidden):
 
