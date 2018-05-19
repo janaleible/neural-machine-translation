@@ -126,7 +126,7 @@ class Attention(nn.Module):
             attention_weight = torch.bmm(input[i].view(batch_size, 1, embedding_dimension), hidden.view(batch_size, embedding_dimension, 1))
             attention_weights[:, i] = torch.squeeze(torch.squeeze(attention_weight, 1), 1)
 
-        attention_weights = F.softmax(attention_weights)
+        attention_weights = F.softmax(attention_weights, dim=1)
 
         weighted_sum = Variable(FloatTensor(torch.zeros(embedding_dimension))).repeat(batch_size, 1)
         for i in range(sentence_length):

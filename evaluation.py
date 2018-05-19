@@ -59,9 +59,10 @@ class Evaluator:
     def write_to_file(self, path):
 
         directory = path.split('/')[:-1]
+        path_to_file = os.path.join(*directory)
 
-        if not os.path.exists(directory):
-            os.makedirs(directory)
+        if not os.path.exists(path_to_file):
+            os.makedirs(path_to_file)
 
         with open(path, 'w') as file:
             for sentence in self.translated_sentences:

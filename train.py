@@ -1,6 +1,9 @@
 import collections
 import csv
 from typing import Dict
+
+import math
+
 from evaluation import Evaluator
 from model import NeuralMachineTranslator
 import logging
@@ -42,7 +45,8 @@ def train_epochs(
     max_sentence_length: int,
     evaluator: Evaluator,
     dropout=0.3,
-    learning_rate=0.01
+    learning_rate=0.01,
+    max_iterations_per_epoch=math.inf
 ) -> Dict[int, Metrics]:
 
     logger.info("Start training..")
@@ -60,7 +64,7 @@ def train_epochs(
     test_iterator = BucketIterator(dataset=test_data, batch_size=32,
                                     sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=False)
 
-    iterations_per_epoch = (len(training_data) // batch_size) + 1
+    iterations_per_epoch = min(max_iterations_per_epoch, (len(training_data) // batch_size) + 1)
 
     model = NeuralMachineTranslator(embedding_dimension, n_french, max_sentence_length, dropout,
                  1, n_english, 2*embedding_dimension)
@@ -93,7 +97,7 @@ def train_epochs(
         with open('training_progress.csv', 'w') as file:
             filewriter = csv.writer(file)
             filewriter.writerow(['Epoch', 'BLEU', 'TER'])
-            for epoch, metric in metrics:
+            for epoch, metric in metrics.items():
                 filewriter.writerow([epoch, metric.BLEU, metric.TER])
 
     return metrics
@@ -127,8 +131,9 @@ if __name__ == "__main__":
     # hyperparameters
     embedding_dimension = 50
     batch_size = 32
-    epochs = 1
+    epochs = 10
     max_sentence_length = 150
+    max_iterations_per_epoch = 10
 
     evaluator = Evaluator(training_data.english.vocab)
 
@@ -139,5 +144,6 @@ if __name__ == "__main__":
         epochs,
         batch_size,
         max_sentence_length,
-        evaluator
+        evaluator,
+        max_iterations_per_epoch=max_iterations_per_epoch
     )
