@@ -1,0 +1,5 @@
+git+https://github.com/aflc/pyter.git
+numpy
+nltk
+torch
+torchtext

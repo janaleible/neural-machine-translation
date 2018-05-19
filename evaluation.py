@@ -1,4 +1,5 @@
 import numpy as np
+import pyter
 from nltk.translate.bleu_score import corpus_bleu
 from torch import Tensor
 from torchtext.vocab import Vocab
@@ -49,4 +50,7 @@ class Evaluator:
         raise NotImplementedError
 
     def ter(self) -> float:
-        raise NotImplementedError
+        total_ter = 0
+        for translation, target in zip(self.translated_sentences, self.target_sentences):
+            pyter.ter(translation, target)
+        return total_ter / len(self.translated_sentences)
