@@ -57,6 +57,9 @@ class NeuralMachineTranslator(nn.Module):
 
         context = torch.randn(hidden.size())
         loss = 0
+
+        predicted_sentence = np.zeros((batch_size, english_sentence_length))
+
         for time in range(english_sentence_length):
             hidden = self.attention(encoder_outputs, hidden)
             output, hidden, context = self.decoder(
@@ -70,8 +73,9 @@ class NeuralMachineTranslator(nn.Module):
             batch_loss.masked_fill_(mask[:, time].byte(), 0.)
             loss += batch_loss.sum() / batch_size
 
-        return output, loss
+            predicted_sentence[:, time] = torch.argmax(torch.squeeze(output, 0), 1)
 
+        return predicted_sentence, loss
 
 
 class PositionalEncoder(nn.Module):
