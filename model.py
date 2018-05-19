@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 
 class NeuralMachineTranslator(nn.Module):
+
     def __init__(self, embedding_dimension, vocabulary_size, sentence_length, dropout,
                  input_size_decoder, output_size_decoder, hidden_size_decoder):
         super(NeuralMachineTranslator, self).__init__()
@@ -21,7 +22,7 @@ class NeuralMachineTranslator(nn.Module):
         self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout)
         self.attention = Attention(embedding_dimension)
         self.decoder = Decoder(input_size_decoder, hidden_size_decoder, output_size_decoder)
-        self.softmax = nn.Softmax(dim=2)
+        self.softmax = nn.LogSoftmax(dim=2)
         self.criterion = nn.NLLLoss(size_average=False, reduce=False)
 
     def forward(self, input):
@@ -39,8 +40,8 @@ class NeuralMachineTranslator(nn.Module):
 
         mask = torch.zeros((batch_size, english_sentence_length))
         for sentence in range(batch_size):
-            sentence_mask = [0] * int(target_lengths[sentence]) + [1] * (
-                    english_sentence_length - int(target_lengths[sentence]))
+            sentence_mask = [0] * int(target_lengths[sentence]) \
+                          + [1] * (english_sentence_length - int(target_lengths[sentence]))
             mask[sentence, :] = torch.LongTensor(sentence_mask)
 
         batch_size, time_size = input_sentences.size()

@@ -13,7 +13,7 @@ import pickle
 import torch
 from torchtext.data import BucketIterator, interleave_keys
 
-Metrics = collections.namedtuple('Metrics', ['BLEU', 'TER'])
+Metrics = collections.namedtuple('Metrics', ['BLEU', 'TER', 'loss'])
 
 logger = logging.getLogger(__name__)
 Sentence = collections.namedtuple('Sentence', 'id, english, french')
@@ -89,16 +89,20 @@ def train_epochs(
             epoch_loss += loss
             evaluator.add_sentences(batch.trg[0], prediction)
 
-        metrics[epoch] = Metrics(evaluator.bleu(), evaluator.ter())
+        metrics[epoch] = Metrics(evaluator.bleu(), evaluator.ter(), epoch_loss)
         evaluator.write_to_file('output/predictions_epoch{}.pred'.format(epoch))
 
-        print('Epoch {}: BLEU {:.3}, TER {:.3}'.format(epoch, metrics[epoch].BLEU, metrics[epoch].TER))
+        print(
+            'Epoch {}: loss {:.3}, BLEU {:.3}, TER {:.3}'.format(
+                epoch, metrics[epoch].loss, metrics[epoch].BLEU, metrics[epoch].TER
+            )
+        )
 
         with open('training_progress.csv', 'w') as file:
             filewriter = csv.writer(file)
-            filewriter.writerow(['Epoch', 'BLEU', 'TER'])
+            filewriter.writerow(['Epoch', 'loss', 'BLEU', 'TER'])
             for epoch, metric in metrics.items():
-                filewriter.writerow([epoch, metric.BLEU, metric.TER])
+                filewriter.writerow([epoch, metric.loss, metric.BLEU, metric.TER])
 
         with open('output/model_epoch{}.pickle'.format(epoch), 'wb') as file:
             pickle.dump(model, file)
