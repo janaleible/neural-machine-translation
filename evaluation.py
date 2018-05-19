@@ -45,7 +45,7 @@ class Evaluator:
         return parsed
 
     def bleu(self) -> float:
-        return corpus_bleu(self.target_sentences, self.translated_sentences)
+        return corpus_bleu([[target_sentece] for target_sentece in self.target_sentences], self.translated_sentences)
 
     def meteor(self) -> float:
         raise NotImplementedError
@@ -66,4 +66,4 @@ class Evaluator:
 
         with open(path, 'w') as file:
             for sentence in self.translated_sentences:
-                file.write(' '.join(sentence))
+                file.write(' '.join(sentence) + '\n')

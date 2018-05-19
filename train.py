@@ -90,7 +90,7 @@ def train_epochs(
             evaluator.add_sentences(batch.trg[0], prediction)
 
         metrics[epoch] = Metrics(evaluator.bleu(), evaluator.ter())
-        evaluator.write_to_file('output/predictions_epoch{}.pred')
+        evaluator.write_to_file('output/predictions_epoch{}.pred'.format(epoch))
 
         print('Epoch {}: BLEU {:.3}, TER {:.3}'.format(epoch, metrics[epoch].BLEU, metrics[epoch].TER))
 
