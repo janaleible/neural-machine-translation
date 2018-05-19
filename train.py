@@ -77,7 +77,7 @@ def train_epochs(
             loss.backward()
             optimizer.step()
             epoch_loss += loss
-            evaluator.add_sentences(batch.src[0], prediction)
+            evaluator.add_sentences(batch.trg[0], prediction)
 
         evaluator.bleu()
 
@@ -113,7 +113,7 @@ if __name__ == "__main__":
     epochs = 1
     max_sentence_length = 150
 
-    evaluator = Evaluator(training_data.french.vocab, training_data.english.vocab)
+    evaluator = Evaluator(training_data.english.vocab)
 
     # train
     train_epochs(

@@ -6,24 +6,23 @@ from torchtext.vocab import Vocab
 
 class Evaluator:
 
-    def __init__(self, french_vocabulary: Vocab, english_vocabulary: Vocab):
+    def __init__(self, english_vocabulary: Vocab):
 
-        self.french_vocabulary = french_vocabulary
         self.english_vocabulary = english_vocabulary
 
-        self.input_sentences = []
+        self.target_sentences = []
         self.translated_sentences = []
 
-    def add_sentences(self, input_batch: Tensor, predicted_batch: np.ndarray):
+    def add_sentences(self, target_batch: Tensor, predicted_batch: np.ndarray):
 
-        batch_size = input_batch.size()[0]
+        batch_size = target_batch.size()[0]
 
         for sentence in range(batch_size):
-            self.input_sentences.append(self.index2Text(input_batch[sentence, :], self.french_vocabulary))
-            self.translated_sentences.append(self.index2Text(predicted_batch[sentence, :], self.english_vocabulary))
+            self.target_sentences.append(self.index2Text(target_batch[sentence, :]))
+            self.translated_sentences.append(self.index2Text(predicted_batch[sentence, :]))
 
-    def index2Text(self, sentence_indices: [], vocabulary: Vocab) -> []:
-        sentence_bpe = [vocabulary.itos[int(index)] for index in filter(lambda index: int(index) is not vocabulary.stoi['<PAD>'], sentence_indices)]
+    def index2Text(self, sentence_indices: []) -> []:
+        sentence_bpe = [self.english_vocabulary.itos[int(index)] for index in filter(lambda index: int(index) is not self.english_vocabulary.stoi['<PAD>'], sentence_indices)]
 
         parsed = []
         subword_stack = ''
@@ -44,7 +43,7 @@ class Evaluator:
         return parsed
 
     def bleu(self) -> float:
-        return corpus_bleu(self.input_sentences, self.translated_sentences)
+        return corpus_bleu(self.target_sentences, self.translated_sentences)
 
     def meteor(self) -> float:
         raise NotImplementedError
