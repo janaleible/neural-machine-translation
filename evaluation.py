@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import pyter
 from nltk.translate.bleu_score import corpus_bleu
 from torch import Tensor
@@ -54,3 +55,14 @@ class Evaluator:
         for translation, target in zip(self.translated_sentences, self.target_sentences):
             pyter.ter(translation, target)
         return total_ter / len(self.translated_sentences)
+
+    def write_to_file(self, path):
+
+        directory = path.split('/')[:-1]
+
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        with open(path, 'w') as file:
+            for sentence in self.translated_sentences:
+                file.write(' '.join(sentence))

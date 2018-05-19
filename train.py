@@ -1,4 +1,6 @@
 import collections
+import csv
+from typing import Dict
 from evaluation import Evaluator
 from model import NeuralMachineTranslator
 import logging
@@ -7,6 +9,8 @@ from parallel_data import ParallelData
 import pickle
 import torch
 from torchtext.data import BucketIterator, interleave_keys
+
+Metrics = collections.namedtuple('Metrics', ['BLEU', 'TER'])
 
 logger = logging.getLogger(__name__)
 Sentence = collections.namedtuple('Sentence', 'id, english, french')
@@ -39,7 +43,7 @@ def train_epochs(
     evaluator: Evaluator,
     dropout=0.3,
     learning_rate=0.01
-):
+) -> Dict[int, Metrics]:
 
     logger.info("Start training..")
     print("Start training..")
@@ -62,14 +66,16 @@ def train_epochs(
                  1, n_english, 2*embedding_dimension)
     optimizer = optim.SGD(model.parameters(), lr=learning_rate)
 
+    metrics = {}
+
     for epoch in range(1, n_epochs + 1):
 
-        print('Epoch {}'.format(epoch))
+        # print('Epoch {}'.format(epoch))
 
         epoch_loss = 0
         for iteration in range(iterations_per_epoch):
 
-            print('batch {}/{}'.format(iteration, iterations_per_epoch))
+            # print('batch {}/{}'.format(iteration, iterations_per_epoch))
 
             # get next batch
             batch = next(iter(train_iterator))
@@ -79,7 +85,18 @@ def train_epochs(
             epoch_loss += loss
             evaluator.add_sentences(batch.trg[0], prediction)
 
-        evaluator.bleu()
+        metrics[epoch] = Metrics(evaluator.bleu(), evaluator.ter())
+        evaluator.write_to_file('output/predictions_epoch{}.pred')
+
+        print('Epoch {}: BLEU {:.3}, TER {:.3}'.format(epoch, metrics[epoch].BLEU, metrics[epoch].TER))
+
+        with open('training_progress.csv', 'w') as file:
+            filewriter = csv.writer(file)
+            filewriter.writerow(['Epoch', 'BLEU', 'TER'])
+            for epoch, metric in metrics:
+                filewriter.writerow([epoch, metric.BLEU, metric.TER])
+
+    return metrics
 
 
 if __name__ == "__main__":
