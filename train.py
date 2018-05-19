@@ -100,6 +100,9 @@ def train_epochs(
             for epoch, metric in metrics.items():
                 filewriter.writerow([epoch, metric.BLEU, metric.TER])
 
+        with open('output/model_epoch{}.pickle'.format(epoch), 'wb') as file:
+            pickle.dump(model, file)
+
     return metrics
 
 
@@ -145,5 +148,5 @@ if __name__ == "__main__":
         batch_size,
         max_sentence_length,
         evaluator,
-        max_iterations_per_epoch=max_iterations_per_epoch
+        # max_iterations_per_epoch=max_iterations_per_epoch
     )
