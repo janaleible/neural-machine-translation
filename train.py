@@ -33,6 +33,7 @@ def load_data(f):
 
 
 def train(batch, model):
+    model.zero_grad()
     output, loss = model(batch)
     return output, loss
 
@@ -59,15 +60,15 @@ def train_epochs(
     # iterators
     train_iterator = BucketIterator(dataset=training_data, batch_size=batch_size,
                                     sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=True)
-    validation_iterator = BucketIterator(dataset=validation_data, batch_size=32,
-                                    sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=False)
-    test_iterator = BucketIterator(dataset=test_data, batch_size=32,
-                                    sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=False)
+    # validation_iterator = BucketIterator(dataset=validation_data, batch_size=32,
+    #                                 sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=False)
+    # test_iterator = BucketIterator(dataset=test_data, batch_size=32,
+    #                                 sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=False)
 
     iterations_per_epoch = min(max_iterations_per_epoch, (len(training_data) // batch_size) + 1)
 
     model = NeuralMachineTranslator(embedding_dimension, n_french, max_sentence_length, dropout,
-                 1, n_english, 2*embedding_dimension)
+                 1, n_english, 2*embedding_dimension, batch_size)
     optimizer = optim.SGD(model.parameters(), lr=learning_rate)
 
     metrics = {}
@@ -127,8 +128,8 @@ if __name__ == "__main__":
 
     # get data
     training_data = ParallelData(train_path)
-    validation_data = ParallelData(validation_path)
-    test_data = ParallelData(test_path)
+    # validation_data = ParallelData(validation_path)
+    # test_data = ParallelData(test_path)
 
     # build vocabulary
     # TODO: I think it automatically unks..

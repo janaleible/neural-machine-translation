@@ -9,7 +9,7 @@ import torch.nn.functional as F
 class NeuralMachineTranslator(nn.Module):
 
     def __init__(self, embedding_dimension, vocabulary_size, sentence_length, dropout,
-                 input_size_decoder, output_size_decoder, hidden_size_decoder):
+                 input_size_decoder, output_size_decoder, hidden_size_decoder, batch_size):
         super(NeuralMachineTranslator, self).__init__()
 
         self.embedding_dimension = embedding_dimension
@@ -19,11 +19,14 @@ class NeuralMachineTranslator(nn.Module):
         self.input_size_decoder = input_size_decoder
         self.output_size_decoder = output_size_decoder
         self.hidden_size_decoder = hidden_size_decoder
+        self.batch_size = batch_size
         self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout)
         self.attention = Attention(embedding_dimension)
         self.decoder = Decoder(input_size_decoder, hidden_size_decoder, output_size_decoder)
         self.softmax = nn.LogSoftmax(dim=2)
         self.criterion = nn.NLLLoss(size_average=False, reduce=False)
+
+        self.context = torch.randn((1, 32, hidden_size_decoder, batch_size))  # TODO change!
 
     def forward(self, input):
 
@@ -44,37 +47,39 @@ class NeuralMachineTranslator(nn.Module):
                           + [1] * (english_sentence_length - int(target_lengths[sentence]))
             mask[sentence, :] = torch.LongTensor(sentence_mask)
 
-        batch_size, time_size = input_sentences.size()
+        batch_size, sentence_length = input_sentences.size()
         encoder_outputs = []
         average_embedding = Variable(FloatTensor(torch.zeros(2 * self.embedding_dimension))).repeat(batch_size, 1)
-        for time in range(french_sentence_length):
-            positional_embedding = self.encoder(input_sentences[:, time], time + 1)
+        for word in range(french_sentence_length):
+            positional_embedding = self.encoder(input_sentences[:, word], word + 1)
             encoder_outputs.append(positional_embedding)
             average_embedding += positional_embedding
 
-        average_embedding /= time_size
+        average_embedding /= sentence_length
 
         hidden = torch.unsqueeze(average_embedding, 0)
+        hidden = Variable(hidden.data) # detach hidden state from history for better performance during backprop
 
-        context = torch.randn(hidden.size())
         loss = 0
+
+        # context = torch.randn(hidden.size())  # TODO change!
 
         predicted_sentence = np.zeros((batch_size, english_sentence_length))
 
-        for time in range(english_sentence_length):
+        for word in range(english_sentence_length):
             hidden = self.attention(encoder_outputs, hidden)
-            output, hidden, context = self.decoder(
-                torch.unsqueeze(torch.unsqueeze(target_sentences[:, time], 0), 2).float(),
+            output, hidden, self.context = self.decoder(
+                torch.unsqueeze(torch.unsqueeze(target_sentences[:, word], 0), 2).float(),
                 hidden,
-                context
+                self.context
             )
 
             output = self.softmax(output)
-            batch_loss = self.criterion(torch.squeeze(output), target_sentences[:, time])
-            batch_loss.masked_fill_(mask[:, time].byte(), 0.)
+            batch_loss = self.criterion(torch.squeeze(output), target_sentences[:, word])
+            batch_loss.masked_fill_(mask[:, word].byte(), 0.)
             loss += batch_loss.sum() / batch_size
 
-            predicted_sentence[:, time] = torch.argmax(torch.squeeze(output, 0), 1)
+            predicted_sentence[:, word] = torch.argmax(torch.squeeze(output, 0), 1)
 
         return predicted_sentence, loss
 
