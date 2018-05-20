@@ -26,7 +26,7 @@ class NeuralMachineTranslator(nn.Module):
         self.softmax = nn.LogSoftmax(dim=2)
         self.criterion = nn.NLLLoss(size_average=False, reduce=False)
 
-        self.context = torch.randn((1, 32, hidden_size_decoder, batch_size))  # TODO change!
+        self.context = torch.randn((1, batch_size, hidden_size_decoder))  # TODO change!
 
     def forward(self, input):
 
