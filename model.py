@@ -25,8 +25,10 @@ class NeuralMachineTranslator(nn.Module):
         self.decoder = Decoder(input_size_decoder, hidden_size_decoder, output_size_decoder)
         self.softmax = nn.LogSoftmax(dim=2)
         self.criterion = nn.NLLLoss(size_average=False, reduce=False)
+        self.hidden = None
+        self.start = True
 
-        self.context = torch.randn((1, batch_size, hidden_size_decoder))  # TODO change!
+        self.context = Variable(torch.randn((1, batch_size, hidden_size_decoder)))  # TODO change!
 
     def forward(self, input):
 
@@ -57,8 +59,13 @@ class NeuralMachineTranslator(nn.Module):
 
         average_embedding /= sentence_length
 
-        hidden = torch.unsqueeze(average_embedding, 0)
-        hidden = Variable(hidden.data) # detach hidden state from history for better performance during backprop
+        if self.start:
+            self.hidden = Variable(torch.unsqueeze(average_embedding, 0))
+            self.start = False
+
+        # detach recurrent states from history for better performance during backprop
+        self.hidden = repackage_hidden(self.hidden)
+        self.context = repackage_hidden(self.context)
 
         loss = 0
 
@@ -67,16 +74,16 @@ class NeuralMachineTranslator(nn.Module):
         predicted_sentence = np.zeros((batch_size, english_sentence_length))
 
         for word in range(english_sentence_length):
-            hidden = self.attention(encoder_outputs, hidden)
-            output, hidden, self.context = self.decoder(
+            self.hidden = self.attention(encoder_outputs, self.hidden)
+            output, self.hidden, self.context = self.decoder(
                 torch.unsqueeze(torch.unsqueeze(target_sentences[:, word], 0), 2).float(),
-                hidden,
+                self.hidden,
                 self.context
             )
 
             output = self.softmax(output)
             batch_loss = self.criterion(torch.squeeze(output), target_sentences[:, word])
-            batch_loss.masked_fill_(mask[:, word].byte(), 0.)
+            batch_loss.masked_fill_(Variable(mask[:, word].byte()), 0.)
             loss += batch_loss.sum() / batch_size
 
             predicted_sentence[:, word] = torch.argmax(torch.squeeze(output, 0), 1)
@@ -148,14 +155,19 @@ class Decoder(nn.Module):
 
     def __init__(self, input_size, hidden_size, output_size):
         super(Decoder, self).__init__()
-        self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size)
+        self.lstm = nn.LSTM(input_size=100, hidden_size=hidden_size)
         self.lstm2output = nn.Linear(hidden_size, output_size)
+        self.embedding = nn.Embedding(input_size, 100)
 
     def forward(self, input, hidden, context):
 
-        result, (hidden, context) = self.lstm(input, (hidden, context))
+        input_embedding = self.embedding(torch.squeeze(input.long()))
+        result, (hidden, context) = self.lstm(torch.unsqueeze(input_embedding, 0), (hidden, context))
         output = self.lstm2output(result)
 
         return output, hidden, context
 
 
+def repackage_hidden(h):
+    """Wraps hidden states in new Variables, to detach them from their history."""
+    return Variable(h.data)
