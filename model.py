@@ -27,6 +27,7 @@ class NeuralMachineTranslator(nn.Module):
         self.criterion = nn.NLLLoss(size_average=False, reduce=False)
         self.hidden = None
         self.start = True
+        self.dropout = nn.Dropout(p=dropout)
 
         self.context = Variable(torch.randn((1, batch_size, hidden_size_decoder)))  # TODO change!
 

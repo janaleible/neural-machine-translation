@@ -46,7 +46,7 @@ def train_epochs(
     max_sentence_length: int,
     evaluator: Evaluator,
     dropout=0.3,
-    learning_rate=0.05,
+    learning_rate=0.01,
     max_iterations_per_epoch=math.inf
 ) -> Dict[int, Metrics]:
 
@@ -142,9 +142,9 @@ if __name__ == "__main__":
     # hyperparameters
     embedding_dimension = 100
     batch_size = 32
-    epochs = 10
+    epochs = 50
     max_sentence_length = 150
-    max_iterations_per_epoch = 10
+    max_iterations_per_epoch = 30
 
     evaluator = Evaluator(training_data.english.vocab)
 
