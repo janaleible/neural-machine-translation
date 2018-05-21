@@ -67,3 +67,7 @@ class Evaluator:
         with open(path, 'w') as file:
             for sentence in self.translated_sentences:
                 file.write(' '.join(sentence) + '\n')
+
+    def clear_sentences(self):
+        self.translated_sentences = []
+        self.target_sentences = []

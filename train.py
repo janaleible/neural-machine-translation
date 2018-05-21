@@ -93,8 +93,10 @@ def train_epochs(
                 print('batch {}/{}'.format(iteration, iterations_per_epoch))
                 print(loss)
 
-        metrics[epoch] = Metrics(evaluator.bleu(), 0, epoch_loss)
+        metrics[epoch] = Metrics(evaluator.bleu(), evaluator.ter(), float(epoch_loss))
         evaluator.write_to_file('output/predictions_epoch{}.pred'.format(epoch))
+
+        evaluator.clear_sentences()
 
         print(
             'Epoch {}: loss {:.3}, BLEU {:.3}, TER {:.3}'.format(
