@@ -68,7 +68,7 @@ def train_epochs(
     iterations_per_epoch = min(max_iterations_per_epoch, (len(training_data) // batch_size) + 1)
 
     model = NeuralMachineTranslator(embedding_dimension, n_french, max_sentence_length, dropout,
-                 1, n_english, 2*embedding_dimension, batch_size)
+                 n_english, n_english, 2*embedding_dimension, batch_size)
     optimizer = optim.SGD(model.parameters(), lr=learning_rate)
 
     metrics = {}
@@ -80,22 +80,25 @@ def train_epochs(
         epoch_loss = 0
         for iteration in range(iterations_per_epoch):
 
-            # print('batch {}/{}'.format(iteration, iterations_per_epoch))
-
             # get next batch
+            optimizer.zero_grad()
             batch = next(iter(train_iterator))
             prediction, loss = train(batch, model)
             loss.backward()
             optimizer.step()
-            epoch_loss += loss
+            epoch_loss += loss.data[0]
             evaluator.add_sentences(batch.trg[0], prediction)
 
-        metrics[epoch] = Metrics(evaluator.bleu(), evaluator.ter(), epoch_loss)
+            if iteration % 100 == 0:
+                print('batch {}/{}'.format(iteration, iterations_per_epoch))
+                print(loss)
+
+        metrics[epoch] = Metrics(evaluator.bleu(), 0, epoch_loss)
         evaluator.write_to_file('output/predictions_epoch{}.pred'.format(epoch))
 
         print(
             'Epoch {}: loss {:.3}, BLEU {:.3}, TER {:.3}'.format(
-                epoch, metrics[epoch].loss, metrics[epoch].BLEU, metrics[epoch].TER
+                epoch, float(metrics[epoch].loss), float(metrics[epoch].BLEU), float(metrics[epoch].TER)
             )
         )
 
@@ -137,11 +140,11 @@ if __name__ == "__main__":
     training_data.english.build_vocab(training_data, max_size=40000)
 
     # hyperparameters
-    embedding_dimension = 50
+    embedding_dimension = 100
     batch_size = 32
-    epochs = 10
+    epochs = 50
     max_sentence_length = 150
-    max_iterations_per_epoch = 10
+    max_iterations_per_epoch = 30
 
     evaluator = Evaluator(training_data.english.vocab)
 
