@@ -137,6 +137,10 @@ def train_epochs(
             )
         )
 
+        if epoch > 0 and metrics[epoch].loss > metrics[epoch - 1].loss:
+            learning_rate /= 2
+            optimizer = optim.SGD(model.parameters(), lr=learning_rate)
+
         with open('training_progress.csv', 'w') as file:
             filewriter = csv.writer(file)
             filewriter.writerow(['Epoch', 'loss', 'BLEU', 'TER'])
@@ -174,11 +178,11 @@ if __name__ == "__main__":
     # hyper parameters
     embedding_dimension = 100
     batch_size = 32
-    epochs = 10
+    epochs = 50
     max_sentence_length = 150
     max_iterations_per_epoch = 30
     dropout = 0
-    initial_learning_rate = 0.01
+    initial_learning_rate = 0.05
     teacher_forcing = True
 
     # get data
