@@ -22,16 +22,13 @@ class Predictor:
         self.model = model
 
     def predict(self, data: Batch) -> np.ndarray:
-        prediction, _ = self.model(data)
+        prediction, _ = self.model(data, teacher_forcing=False)
         return prediction
 
 
 if __name__ == "__main__":
 
     dataset = sys.argv[1]
-
-
-
 
     training_data = ParallelData('data/BPE/train/train.BPE')
     training_data.french.build_vocab(training_data, max_size=80000)
@@ -67,8 +64,6 @@ if __name__ == "__main__":
 
     predictor = Predictor(model)
     evaluator = Evaluator(training_data.english.vocab)
-
-
 
     # evaluator.add_sentences(input_data.trg[0], predictor.predict(input_data))
     evaluator.add_sentences(training_batches.trg[0], predictor.predict(training_batches))

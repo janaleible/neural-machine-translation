@@ -19,7 +19,8 @@ class NeuralMachineTranslator(nn.Module):
         hidden_size_decoder,
         batch_size,
         EOS_index,
-        max_prediction_length,
+        SOS_index,
+        max_prediction_length
 
     ):
         super(NeuralMachineTranslator, self).__init__()
@@ -35,13 +36,14 @@ class NeuralMachineTranslator(nn.Module):
         self.batch_size = batch_size
         self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout)
         self.attention = Attention(embedding_dimension)
-        self.decoder = Decoder(input_size_decoder, hidden_size_decoder, output_size_decoder, dropout)
+        self.decoder = Decoder(input_size_decoder, hidden_size_decoder, output_size_decoder, dropout, SOS_index)
         self.softmax = nn.LogSoftmax(dim=2)
         self.criterion = nn.NLLLoss(size_average=False, reduce=False)
         self.hidden = None
         self.context = None
         self.start = True
         self.EOS = EOS_index
+        self.SOS = SOS_index
         self.max_prediction_length = max_prediction_length
 
     def forward(self, input: Batch, get_loss=False, teacher_forcing=False):
@@ -55,15 +57,7 @@ class NeuralMachineTranslator(nn.Module):
         target_lengths = input.trg[1]
 
         french_sentence_length = input_sentences.size()[1]
-
-        if teacher_forcing:
-            english_sentence_length = target_sentences.size()[1]
-
-            mask = torch.zeros((batch_size, english_sentence_length))
-            for sentence in range(batch_size):
-                sentence_mask = [0] * int(target_lengths[sentence]) \
-                              + [1] * (english_sentence_length - int(target_lengths[sentence]))
-                mask[sentence, :] = torch.LongTensor(sentence_mask)
+        english_sentence_length = target_sentences.size()[1]
 
         batch_size, sentence_length = input_sentences.size()
         encoder_outputs = []
@@ -92,6 +86,7 @@ class NeuralMachineTranslator(nn.Module):
 
         has_eos = np.array([False] * batch_size)
         word = -1
+        output = []
         while not all(has_eos):
 
             word += 1
@@ -102,8 +97,6 @@ class NeuralMachineTranslator(nn.Module):
 
             if teacher_forcing:
                 output = torch.unsqueeze(torch.unsqueeze(target_sentences[:, word], 0), 2).float()
-            else:
-                output = average_embedding
 
             output, self.hidden, self.context = self.decoder(
                 output,
@@ -114,16 +107,46 @@ class NeuralMachineTranslator(nn.Module):
 
             output = self.softmax(output)
 
-            if get_loss:
-                batch_loss = self.criterion(torch.squeeze(output), target_sentences[:, word])
-                batch_loss.masked_fill_(Variable(mask[:, word].byte()), 0.)
-                loss += batch_loss.sum() / batch_size
-            else:
-                loss = None
-
             predicted_sentence[:, word] = torch.argmax(torch.squeeze(output, 0), 1)
 
             has_eos |= (predicted_sentence[:, word] == self.EOS)
+
+            if get_loss:
+                if teacher_forcing:
+
+                    mask = torch.zeros((batch_size, english_sentence_length))
+                    for sentence in range(batch_size):
+                        sentence_mask = [0] * int(target_lengths[sentence]) \
+                                        + [1] * (english_sentence_length - int(target_lengths[sentence]))
+                        mask[sentence, :] = torch.LongTensor(sentence_mask)
+                else:
+                    # mask = torch.zeros((batch_size, english_sentence_length))
+                    # for sentence in range(batch_size):
+                    #     cur_sentence = predicted_sentence[sentence, :]
+                    #     location_of_eos = np.where(cur_sentence==self.EOS)[0]
+                    #     if len(location_of_eos) == 0:
+                    #         location_of_eos = self.max_prediction_length
+                    #     else:
+                    #         location_of_eos = location_of_eos[0]
+                    #     sentence_mask = [0] * (int(location_of_eos) + 1) \
+                    #                     + [1] * (english_sentence_length - int(location_of_eos) - 1)
+                    #     mask[sentence, :] = torch.LongTensor(sentence_mask)
+                    mask = torch.zeros((batch_size, english_sentence_length))
+                    for sentence in range(batch_size):
+                        sentence_mask = [0] * int(target_lengths[sentence]) \
+                                        + [1] * (english_sentence_length - int(target_lengths[sentence]))
+                        mask[sentence, :] = torch.LongTensor(sentence_mask)
+                if not word >= english_sentence_length:
+                    batch_loss = self.criterion(torch.squeeze(output), target_sentences[:, word])
+                    batch_loss.masked_fill_(Variable(mask[:, word].byte()), 0.)
+                    loss += batch_loss.sum() / batch_size
+                else:
+                    break
+            else:
+                loss = None
+
+            if not teacher_forcing:
+                output = torch.argmax(torch.squeeze(output, 0), 1)
 
         return predicted_sentence, loss
 
@@ -190,19 +213,27 @@ class Attention(nn.Module):
 
 class Decoder(nn.Module):
 
-    def __init__(self, input_size, hidden_size, output_size, dropout):
+    def __init__(self, input_size, hidden_size, output_size, dropout, SOS_index):
         super(Decoder, self).__init__()
         self.lstm = nn.LSTM(input_size=200, hidden_size=hidden_size)
         self.lstm2output = nn.Linear(hidden_size, output_size)
         self.embedding = nn.Embedding(input_size, 200)
         self.dropout = nn.Dropout(p=dropout)
+        self.SOS = SOS_index
 
     def forward(self, input, hidden, context, teacher_forcing):
 
         if teacher_forcing:
             input = self.embedding(torch.squeeze(input.long()))
+        else:
+            batch_size = hidden.size()[1]
+            if len(input) == 0:
+                input = Variable(LongTensor([self.SOS])).repeat(batch_size)
+                input = self.embedding(input.long())
+            else:
+                input = self.embedding(input.long())
 
-        input = self.dropout(input)
+        # input = self.dropout(input)
         result, (hidden, context) = self.lstm(torch.unsqueeze(input, 0), (hidden, context))
         output = self.lstm2output(result)
 
