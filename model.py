@@ -51,9 +51,8 @@ class NeuralMachineTranslator(nn.Module):
 
         batch_size = input_sentences.size()[0]
 
-        if teacher_forcing:
-            target_sentences = input.trg[0]
-            target_lengths = input.trg[1]
+        target_sentences = input.trg[0]
+        target_lengths = input.trg[1]
 
         french_sentence_length = input_sentences.size()[1]
 

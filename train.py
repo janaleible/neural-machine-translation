@@ -32,22 +32,28 @@ def load_data(f):
     return data
 
 
-def train(batch, model):
+def train(batch, model, use_teacher_forcing):
     model.zero_grad()
-    output, loss = model(batch, teacher_forcing=True, get_loss=True)
+    output, loss = model(batch, teacher_forcing=use_teacher_forcing, get_loss=True)
     return output, loss
 
+def validation_metrics(validation_iterator, training_iterator):
+
+    return
 
 def train_epochs(
     training_data: ParallelData,
+    validation_data: ParallelData,
     embedding_dimension: int,
     n_epochs: int,
     batch_size: int,
     max_sentence_length: int,
     evaluator: Evaluator,
+    validation_evaluator: Evaluator,
     dropout=0.3,
     learning_rate=0.01,
-    max_iterations_per_epoch=math.inf
+    max_iterations_per_epoch=math.inf,
+    teacher_forcing=False
 ) -> Dict[int, Metrics]:
 
     logger.info("Start training..")
@@ -60,8 +66,8 @@ def train_epochs(
     # iterators
     train_iterator = BucketIterator(dataset=training_data, batch_size=batch_size,
                                     sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=True)
-    # validation_iterator = BucketIterator(dataset=validation_data, batch_size=32,
-    #                                 sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=False)
+    validation_iterator = BucketIterator(dataset=validation_data, batch_size=32,
+                                    sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=False)
     # test_iterator = BucketIterator(dataset=test_data, batch_size=32,
     #                                 sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=False)
 
@@ -94,7 +100,7 @@ def train_epochs(
             # get next batch
             optimizer.zero_grad()
             batch = next(iter(train_iterator))
-            prediction, loss = train(batch, model)
+            prediction, loss = train(batch, model, teacher_forcing)
             loss.backward()
             optimizer.step()
             epoch_loss += loss.data[0]
@@ -106,14 +112,15 @@ def train_epochs(
 
         metrics[epoch] = Metrics(evaluator.bleu(), evaluator.ter(), float(epoch_loss))
         evaluator.write_to_file('output/predictions_epoch{}'.format(epoch))
-
         evaluator.clear_sentences()
 
         print(
-            'Epoch {}: loss {:.3}, BLEU {:.3}, TER {:.3}'.format(
+            'Epoch {}: training metrics: loss {:.3}, BLEU {:.3}, TER {:.3}'.format(
                 epoch, float(metrics[epoch].loss), float(metrics[epoch].BLEU), float(metrics[epoch].TER)
             )
         )
+
+        validation_metrics(validation_iterator, train_iterator)
 
         with open('training_progress.csv', 'w') as file:
             filewriter = csv.writer(file)
@@ -144,7 +151,7 @@ if __name__ == "__main__":
 
     # get data
     training_data = ParallelData(train_path)
-    # validation_data = ParallelData(validation_path)
+    validation_data = ParallelData(validation_path)
     # test_data = ParallelData(test_path)
 
     # build vocabulary
@@ -163,16 +170,24 @@ if __name__ == "__main__":
     epochs = 10
     max_sentence_length = 150
     max_iterations_per_epoch = 30
-
+    dropout = 0
+    initial_learning_rate = 0.01
     evaluator = Evaluator(training_data.english.vocab)
+    validation_evaluator = Evaluator(training_data.english.vocab)
+    teacher_forcing = True
 
     # train
     train_epochs(
         training_data,
+        validation_data,
         embedding_dimension,
         epochs,
         batch_size,
         max_sentence_length,
         evaluator,
+        validation_evaluator,
+        dropout,
+        initial_learning_rate,
         # max_iterations_per_epoch=max_iterations_per_epoch
+        teacher_forcing
     )
