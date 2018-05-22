@@ -105,7 +105,7 @@ def train_epochs(
                 print(loss)
 
         metrics[epoch] = Metrics(evaluator.bleu(), evaluator.ter(), float(epoch_loss))
-        evaluator.write_to_file('output/predictions_epoch{}.pred'.format(epoch))
+        evaluator.write_to_file('output/predictions_epoch{}'.format(epoch))
 
         evaluator.clear_sentences()
 

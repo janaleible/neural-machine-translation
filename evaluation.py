@@ -66,7 +66,11 @@ class Evaluator:
         if not os.path.exists(path_to_file):
             os.makedirs(path_to_file)
 
-        with open(path, 'w') as file:
+        with open(path + '.ref', 'w') as file:
+            for sentence in self.target_sentences:
+                file.write(' '.join(sentence) + '\n')
+
+        with open(path + '.hyp', 'w') as file:
             for sentence in self.translated_sentences:
                 file.write(' '.join(sentence) + '\n')
 
