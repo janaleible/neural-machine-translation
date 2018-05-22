@@ -41,7 +41,7 @@ if __name__ == "__main__":
         data = TestData("data/BPE/test/test.BPE", training_data.english.vocab, training_data.french.vocab)
     else:
         raise ValueError('Unknown dataset, pick one of validation/test')
-    with open('output/model_epoch1.pickle', 'rb') as file:
+    with open('output/model_epoch2.pickle', 'rb') as file:
         model = pickle.load(file)
 
     model.EOS = training_data.english.vocab.stoi['<EOS>']

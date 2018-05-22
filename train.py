@@ -6,31 +6,15 @@ import math
 
 from evaluation import Evaluator
 from model import NeuralMachineTranslator
-import logging
 from torch import optim
 from parallel_data import ParallelData, TestData
+from helpers import get_validation_metrics
 import pickle
 import torch
 from torchtext.data import BucketIterator, interleave_keys
-from predict import Predictor
 
 Metrics = collections.namedtuple('Metrics', ['BLEU', 'TER', 'loss'])
-
-logger = logging.getLogger(__name__)
-Sentence = collections.namedtuple('Sentence', 'id, english, french')
 use_cuda = torch.cuda.is_available()
-
-
-def dump_data(f, content):
-    with open(f, 'wb') as file:
-        pickle.dump(content, file)
-
-
-def load_data(f):
-    with open(f, 'rb') as file:
-        data = pickle.load(file)
-
-    return data
 
 
 def train(batch, model, use_teacher_forcing):
@@ -38,25 +22,6 @@ def train(batch, model, use_teacher_forcing):
     output, loss = model(batch, teacher_forcing=use_teacher_forcing, get_loss=True)
 
     return output, loss
-
-
-def get_validation_metrics(model, iterations, training_evaluator, validation_evaluator, training_iterator, validation_iterator):
-
-    predictor = Predictor(model)
-
-    for i in range(iterations):
-        validation_batch = next(iter(validation_iterator))
-        validation_evaluator.add_sentences(validation_batch.trg[0], predictor.predict(validation_batch))
-
-    validation_metrics = Metrics(validation_evaluator.bleu(), validation_evaluator.ter(), 0)
-
-    for i in range(50):
-        batch = next(iter(training_iterator))
-        training_evaluator.add_sentences(batch.trg[0], predictor.predict(batch))
-
-    training_metrics = Metrics(training_evaluator.bleu(), training_evaluator.ter(), 0)
-
-    return validation_metrics, training_metrics
 
 
 def train_epochs(
@@ -73,10 +38,8 @@ def train_epochs(
     teacher_forcing=False
 ) -> Dict[int, Metrics]:
 
-    logger.info("Start training..")
     print("Start training..")
 
-    # get iterators
     n_english = len(training_data.english.vocab)
     n_french = len(training_data.french.vocab)
 
@@ -116,21 +79,32 @@ def train_epochs(
         iteration_loss = 0
         for iteration in range(iterations_per_epoch):
 
-            # get next batch
+            # set gradients to zero
             optimizer.zero_grad()
+
+            # get next batch
             batch = next(iter(train_iterator))
+
+            # forward pass
             prediction, loss = train(batch, model, teacher_forcing)
+
+            # backward pass
             loss.backward()
+
+            # update parameters
             optimizer.step()
+
+            # save losses and add predicted sentences to evaluator
             epoch_loss += loss.data[0]
             iteration_loss += loss.data[0]
             evaluator.add_sentences(batch.trg[0], prediction)
 
             if iteration % 100 == 0:
                 print('batch {}/{}'.format(iteration, iterations_per_epoch))
-                print('average loss per batch: {:.3}'.format(iteration_loss / 100))
+                print('average loss per batch: {:5.3}'.format(iteration_loss / 100))
                 iteration_loss = 0
 
+        # save evaluation metrics
         metrics[epoch] = Metrics(evaluator.bleu(), evaluator.ter(), float(epoch_loss))
 
         evaluator.write_to_file('output/predictions_epoch{}'.format(epoch))
@@ -144,6 +118,7 @@ def train_epochs(
         )
 
         print("Getting validation metrics..")
+
         validation_metrics[epoch], training_metrics[epoch] = get_validation_metrics(
             model,
             validation_iterations,
@@ -153,6 +128,9 @@ def train_epochs(
             validation_iterator
         )
 
+        # clear sentences out of evaluators
+        evaluator.clear_sentences()
+        validation_evaluator.clear_sentences()
         print(
             'Epoch {}: validation metrics: BLEU {:.3}, TER {:.3}'.format(
                 epoch, float(validation_metrics[epoch].BLEU), float(validation_metrics[epoch].TER)
@@ -188,13 +166,12 @@ if __name__ == "__main__":
     validation_path = data_path + "BPE/valid/val.BPE"
     test_path = data_path + "BPE/test/test.BPE"
 
-    # TODO: save data to pickles?
     # locations to save data
     filename_train = 'pickles/train_data.pickle'
     filename_valid = 'pickles/validation_data.pickle'
     filename_test = 'pickles/test_data.pickle'
 
-    # hyperparameters
+    # hyper parameters
     embedding_dimension = 100
     batch_size = 32
     epochs = 10
@@ -206,16 +183,16 @@ if __name__ == "__main__":
 
     # get data
     training_data = ParallelData(train_path)
-    # test_data = ParallelData(test_path)
 
     # build vocabulary
-    # TODO: I think it automatically unks..
     training_data.french.build_vocab(training_data, max_size=80000)
     training_data.english.build_vocab(training_data, max_size=40000)
 
+    # save vocabulary
     torch.save(training_data.french.vocab, 'pickles/french_vocab.txt')
     torch.save(training_data.english.vocab, 'pickles/english_vocab.txt')
 
+    # initialize evaluators
     evaluator = Evaluator(training_data.english.vocab)
     validation_evaluator = Evaluator(training_data.english.vocab)
 
