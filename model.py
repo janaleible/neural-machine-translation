@@ -91,15 +91,13 @@ class NeuralMachineTranslator(nn.Module):
         else:
             predicted_sentence = np.zeros((batch_size, self.max_prediction_length))
 
-        # for word in range(english_sentence_length):
-
         has_eos = np.array([False] * batch_size)
         word = -1
         while not all(has_eos):
 
             word += 1
             if teacher_forcing and word >= english_sentence_length: break
-            if word > self.max_prediction_length: break
+            if word >= self.max_prediction_length: break
 
             self.hidden = self.attention(encoder_outputs, self.hidden)
 

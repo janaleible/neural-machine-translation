@@ -6,6 +6,7 @@ import sys
 
 import numpy as np
 import torch
+from torch.autograd import Variable
 from torchtext.data import Batch
 from torchtext.data import BucketIterator
 from torchtext.data import interleave_keys
@@ -21,7 +22,8 @@ class Predictor:
         self.model = model
 
     def predict(self, data: Batch) -> np.ndarray:
-        return self.model(data)
+        prediction, _ = self.model(data)
+        return prediction
 
 
 if __name__ == "__main__":
@@ -41,12 +43,13 @@ if __name__ == "__main__":
         data = TestData("data/BPE/test/test.BPE", training_data.english.vocab, training_data.french.vocab)
     else:
         raise ValueError('Unknown dataset, pick one of validation/test')
-    with open('output/model_epoch1.pickle', 'rb') as file:
+    with open('output/model_epoch2.pickle', 'rb') as file:
         model = pickle.load(file)
 
     model.EOS = training_data.english.vocab.stoi['<EOS>']
     model.max_prediction_length = 50
     model.start = True
+    model.batch_size = len(data)
 
     input_data = next(iter(BucketIterator(
         dataset=data,
@@ -55,9 +58,19 @@ if __name__ == "__main__":
         sort_key=lambda x: interleave_keys(len(x.src), len(x.trg))
     )))
 
+    training_batches = next(iter(BucketIterator(
+        dataset=training_data,
+        batch_size=10,
+        train=True,
+        sort_key=lambda x: interleave_keys(len(x.src), len(x.trg))
+    )))
+
     predictor = Predictor(model)
     evaluator = Evaluator(training_data.english.vocab)
 
-    evaluator.add_sentences(input_data.trg[0], predictor.predict(input_data))
+
+
+    # evaluator.add_sentences(input_data.trg[0], predictor.predict(input_data))
+    evaluator.add_sentences(training_batches.trg[0], predictor.predict(training_batches))
 
     print('')
