@@ -53,6 +53,7 @@ def get_validation_metrics(model, iterations, training_evaluator, validation_eva
     for i in range(50):
         batch = next(iter(training_iterator))
         training_evaluator.add_sentences(batch.trg[0], predictor.predict(batch))
+
     training_metrics = Metrics(training_evaluator.bleu(), training_evaluator.ter(), 0)
 
     return validation_metrics, training_metrics
@@ -86,8 +87,6 @@ def train_epochs(
     validation_iterations = (len(validation_data) // batch_size) + 1
     validation_iterator = BucketIterator(dataset=validation_data, batch_size=batch_size,
                                          sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=False)
-    # test_iterator = BucketIterator(dataset=test_data, batch_size=32,
-    #                                 sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=False)
 
     iterations_per_epoch = min(max_iterations_per_epoch, (len(training_data) // batch_size) + 1)
 
@@ -113,9 +112,8 @@ def train_epochs(
 
     for epoch in range(1, n_epochs + 1):
 
-        # print('Epoch {}'.format(epoch))
-
         epoch_loss = 0
+        iteration_loss = 0
         for iteration in range(iterations_per_epoch):
 
             # get next batch
@@ -125,11 +123,13 @@ def train_epochs(
             loss.backward()
             optimizer.step()
             epoch_loss += loss.data[0]
+            iteration_loss += loss.data[0]
             evaluator.add_sentences(batch.trg[0], prediction)
 
             if iteration % 100 == 0:
                 print('batch {}/{}'.format(iteration, iterations_per_epoch))
-                print(loss)
+                print('average loss per batch: {:.3}'.format(iteration_loss / 100))
+                iteration_loss = 0
 
         metrics[epoch] = Metrics(evaluator.bleu(), evaluator.ter(), float(epoch_loss))
 
@@ -168,7 +168,7 @@ def train_epochs(
         with open('validation_progress.csv', 'w') as file:
             filewriter = csv.writer(file)
             filewriter.writerow(['Epoch', 'training BLEU', 'valid BLEU', 'training TER', 'valid TER'])
-            for epoch, metric in metrics.items():
+            for epoch, metric in validation_metrics.items():
                 filewriter.writerow([epoch, training_metrics[epoch].BLEU, validation_metrics[epoch].BLEU,
                                      training_metrics[epoch].TER, validation_metrics[epoch].TER])
 

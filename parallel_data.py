@@ -15,7 +15,6 @@ Sentence = collections.namedtuple('Sentence', 'id, english, french')
 use_cuda = True if torch.cuda.is_available() else False
 
 
-
 class ParallelData(TranslationDataset):
 
     def __init__(self, path: str):
@@ -24,7 +23,7 @@ class ParallelData(TranslationDataset):
         self.french_word_counts = collections.Counter()
 
         # fields
-        english = Field(batch_first=True, lower=True, include_lengths=True, pad_token='<PAD>')
+        english = Field(batch_first=True, lower=True, eos_token="<EOS>", include_lengths=True, pad_token='<PAD>')
         french = Field(include_lengths=True, batch_first=True, init_token="<SOS>", eos_token="<EOS>", pad_token="<PAD>", lower=True)
 
         self.english = english

@@ -96,7 +96,11 @@ class NeuralMachineTranslator(nn.Module):
             self.hidden = self.attention(encoder_outputs, self.hidden)
 
             if teacher_forcing:
-                output = torch.unsqueeze(torch.unsqueeze(target_sentences[:, word], 0), 2).float()
+                if word == 0:
+                    gold_standard = Variable(LongTensor([self.SOS])).repeat(batch_size)
+                else:
+                    gold_standard = target_sentences[:, word - 1]
+                output = torch.unsqueeze(torch.unsqueeze(gold_standard, 0), 2).float()
 
             output, self.hidden, self.context = self.decoder(
                 output,
@@ -112,30 +116,12 @@ class NeuralMachineTranslator(nn.Module):
             has_eos |= (predicted_sentence[:, word] == self.EOS)
 
             if get_loss:
-                if teacher_forcing:
+                mask = torch.zeros((batch_size, english_sentence_length))
+                for sentence in range(batch_size):
+                    sentence_mask = [0] * int(target_lengths[sentence]) \
+                                    + [1] * (english_sentence_length - int(target_lengths[sentence]))
+                    mask[sentence, :] = torch.LongTensor(sentence_mask)
 
-                    mask = torch.zeros((batch_size, english_sentence_length))
-                    for sentence in range(batch_size):
-                        sentence_mask = [0] * int(target_lengths[sentence]) \
-                                        + [1] * (english_sentence_length - int(target_lengths[sentence]))
-                        mask[sentence, :] = torch.LongTensor(sentence_mask)
-                else:
-                    # mask = torch.zeros((batch_size, english_sentence_length))
-                    # for sentence in range(batch_size):
-                    #     cur_sentence = predicted_sentence[sentence, :]
-                    #     location_of_eos = np.where(cur_sentence==self.EOS)[0]
-                    #     if len(location_of_eos) == 0:
-                    #         location_of_eos = self.max_prediction_length
-                    #     else:
-                    #         location_of_eos = location_of_eos[0]
-                    #     sentence_mask = [0] * (int(location_of_eos) + 1) \
-                    #                     + [1] * (english_sentence_length - int(location_of_eos) - 1)
-                    #     mask[sentence, :] = torch.LongTensor(sentence_mask)
-                    mask = torch.zeros((batch_size, english_sentence_length))
-                    for sentence in range(batch_size):
-                        sentence_mask = [0] * int(target_lengths[sentence]) \
-                                        + [1] * (english_sentence_length - int(target_lengths[sentence]))
-                        mask[sentence, :] = torch.LongTensor(sentence_mask)
                 if not word >= english_sentence_length:
                     batch_loss = self.criterion(torch.squeeze(output), target_sentences[:, word])
                     batch_loss.masked_fill_(Variable(mask[:, word].byte()), 0.)
@@ -159,7 +145,6 @@ class PositionalEncoder(nn.Module):
         self.embedding_dimension = embedding_dimension
         self.vocabulary_size = vocabulary_size
 
-        # TODO: use dropout
         self.dropout = nn.Dropout(p=dropout)
 
         self.input_embedding = nn.Embedding(vocabulary_size, embedding_dimension)
@@ -233,7 +218,7 @@ class Decoder(nn.Module):
             else:
                 input = self.embedding(input.long())
 
-        # input = self.dropout(input)
+        input = self.dropout(input)
         result, (hidden, context) = self.lstm(torch.unsqueeze(input, 0), (hidden, context))
         output = self.lstm2output(result)
 
