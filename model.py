@@ -31,19 +31,18 @@ class NeuralMachineTranslator(nn.Module):
         self.input_size_decoder = input_size_decoder
         self.output_size_decoder = output_size_decoder
         self.hidden_size_decoder = hidden_size_decoder
+        self.dropout = nn.Dropout(p=dropout)
         self.batch_size = batch_size
         self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout)
         self.attention = Attention(embedding_dimension)
-        self.decoder = Decoder(input_size_decoder, hidden_size_decoder, output_size_decoder)
+        self.decoder = Decoder(input_size_decoder, hidden_size_decoder, output_size_decoder, dropout)
         self.softmax = nn.LogSoftmax(dim=2)
         self.criterion = nn.NLLLoss(size_average=False, reduce=False)
         self.hidden = None
+        self.context = None
         self.start = True
-        self.dropout = nn.Dropout(p=dropout)
         self.EOS = EOS_index
         self.max_prediction_length = max_prediction_length
-
-        self.context = Variable(torch.randn((1, batch_size, hidden_size_decoder)))  # TODO change!
 
     def forward(self, input: Batch, get_loss=False, teacher_forcing=False):
 
@@ -72,11 +71,13 @@ class NeuralMachineTranslator(nn.Module):
         average_embedding = Variable(FloatTensor(torch.zeros(2 * self.embedding_dimension))).repeat(batch_size, 1)
         for word in range(french_sentence_length):
             positional_embedding = self.encoder(input_sentences[:, word], word + 1)
+            positional_embedding = self.dropout(positional_embedding)
             encoder_outputs.append(positional_embedding)
             average_embedding += positional_embedding / sentence_length
 
         if self.start:
             self.hidden = Variable(torch.unsqueeze(average_embedding, 0))
+            self.context = Variable(torch.unsqueeze(average_embedding, 0))
             self.start = False
 
         # detach recurrent states from history for better performance during backprop
@@ -126,7 +127,6 @@ class NeuralMachineTranslator(nn.Module):
             predicted_sentence[:, word] = torch.argmax(torch.squeeze(output, 0), 1)
 
             has_eos |= (predicted_sentence[:, word] == self.EOS)
-
 
         return predicted_sentence, loss
 
@@ -193,17 +193,19 @@ class Attention(nn.Module):
 
 class Decoder(nn.Module):
 
-    def __init__(self, input_size, hidden_size, output_size):
+    def __init__(self, input_size, hidden_size, output_size, dropout):
         super(Decoder, self).__init__()
         self.lstm = nn.LSTM(input_size=200, hidden_size=hidden_size)
         self.lstm2output = nn.Linear(hidden_size, output_size)
         self.embedding = nn.Embedding(input_size, 200)
+        self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, input, hidden, context, teacher_forcing):
 
         if teacher_forcing:
             input = self.embedding(torch.squeeze(input.long()))
 
+        input = self.dropout(input)
         result, (hidden, context) = self.lstm(torch.unsqueeze(input, 0), (hidden, context))
         output = self.lstm2output(result)
 
