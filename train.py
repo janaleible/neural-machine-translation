@@ -112,8 +112,8 @@ def train_epochs(
         evaluator.clear_sentences()
 
         print(
-            'Epoch {}: training metrics: loss {:.3}, BLEU {:.3}, TER {:.3}'.format(
-                epoch, float(metrics[epoch].loss), float(metrics[epoch].BLEU), float(metrics[epoch].TER)
+            'Epoch {}: training metrics: loss {:.3}, BLEU {:.3}, TER {:.3}, LR {:.3}'.format(
+                epoch, float(metrics[epoch].loss), float(metrics[epoch].BLEU), float(metrics[epoch].TER), float(learning_rate)
             )
         )
 
@@ -137,7 +137,7 @@ def train_epochs(
             )
         )
 
-        if epoch > 0 and metrics[epoch].loss > metrics[epoch - 1].loss:
+        if epoch > 1 and metrics[epoch].loss > metrics[epoch - 1].loss:
             learning_rate /= 2
             optimizer = optim.SGD(model.parameters(), lr=learning_rate)
 
