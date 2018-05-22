@@ -77,6 +77,7 @@ class NeuralMachineTranslator(nn.Module):
 
         if self.start:
             self.hidden = Variable(torch.unsqueeze(average_embedding, 0))
+            self.context = Variable(torch.unsqueeze(average_embedding, 0))
             self.start = False
 
         # detach recurrent states from history for better performance during backprop
@@ -90,15 +91,13 @@ class NeuralMachineTranslator(nn.Module):
         else:
             predicted_sentence = np.zeros((batch_size, self.max_prediction_length))
 
-        # for word in range(english_sentence_length):
-
         has_eos = np.array([False] * batch_size)
         word = -1
         while not all(has_eos):
 
             word += 1
             if teacher_forcing and word >= english_sentence_length: break
-            if word > self.max_prediction_length: break
+            if word >= self.max_prediction_length: break
 
             self.hidden = self.attention(encoder_outputs, self.hidden)
 

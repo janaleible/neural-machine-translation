@@ -89,7 +89,7 @@ def train_epochs(
         # print('Epoch {}'.format(epoch))
 
         epoch_loss = 0
-        for iteration in range(iterations_per_epoch)[:1]:
+        for iteration in range(iterations_per_epoch):
 
             # get next batch
             optimizer.zero_grad()
