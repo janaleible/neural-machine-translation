@@ -1,6 +1,7 @@
 import numpy as np
 import os
-import pyter
+# import pyter
+from lib.pyter import ter
 from nltk.translate.bleu_score import corpus_bleu
 from torch import Tensor
 from torchtext.vocab import Vocab
@@ -53,7 +54,8 @@ class Evaluator:
     def ter(self) -> float:
         total_ter = 0
         for translation, target in zip(self.translated_sentences, self.target_sentences):
-            pyter.ter(translation, target)
+            total_ter += ter(translation, target)
+
         return total_ter / len(self.translated_sentences)
 
     def write_to_file(self, path):

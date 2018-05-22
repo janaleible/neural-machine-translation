@@ -97,7 +97,7 @@ class NeuralMachineTranslator(nn.Module):
         while not all(has_eos):
 
             word += 1
-            if teacher_forcing and word > english_sentence_length: break
+            if teacher_forcing and word >= english_sentence_length: break
             if word > self.max_prediction_length: break
 
             self.hidden = self.attention(encoder_outputs, self.hidden)

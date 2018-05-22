@@ -89,7 +89,7 @@ def train_epochs(
         # print('Epoch {}'.format(epoch))
 
         epoch_loss = 0
-        for iteration in range(iterations_per_epoch):
+        for iteration in range(iterations_per_epoch)[:1]:
 
             # get next batch
             optimizer.zero_grad()
@@ -155,12 +155,12 @@ if __name__ == "__main__":
     torch.save(training_data.french.vocab, 'pickles/french_vocab.txt')
     torch.save(training_data.english.vocab, 'pickles/english_vocab.txt')
 
-    torch.save(training_data, 'pickles/training_data.tar')
+    # torch.save(training_data, 'pickles/training_data.tar')
 
     # hyperparameters
     embedding_dimension = 100
     batch_size = 32
-    epochs = 50
+    epochs = 10
     max_sentence_length = 150
     max_iterations_per_epoch = 30
 
