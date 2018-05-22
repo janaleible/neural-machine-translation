@@ -34,7 +34,7 @@ def load_data(f):
 
 def train(batch, model):
     model.zero_grad()
-    output, loss = model(batch)
+    output, loss = model(batch, teacher_forcing=True, get_loss=True)
     return output, loss
 
 
@@ -67,8 +67,19 @@ def train_epochs(
 
     iterations_per_epoch = min(max_iterations_per_epoch, (len(training_data) // batch_size) + 1)
 
-    model = NeuralMachineTranslator(embedding_dimension, n_french, max_sentence_length, dropout,
-                 n_english, n_english, 2*embedding_dimension, batch_size)
+    model = NeuralMachineTranslator(
+        embedding_dimension,
+        n_french,
+        max_sentence_length,
+        dropout,
+        n_english,
+        n_english,
+        2*embedding_dimension,
+        batch_size,
+        training_data.english.vocab.stoi['<EOS>'],
+        max_prediction_length=50
+    )
+
     optimizer = optim.SGD(model.parameters(), lr=learning_rate)
 
     metrics = {}
@@ -140,6 +151,11 @@ if __name__ == "__main__":
     # TODO: I think it automatically unks..
     training_data.french.build_vocab(training_data, max_size=80000)
     training_data.english.build_vocab(training_data, max_size=40000)
+
+    torch.save(training_data.french.vocab, 'pickles/french_vocab.txt')
+    torch.save(training_data.english.vocab, 'pickles/english_vocab.txt')
+
+    torch.save(training_data, 'pickles/training_data.tar')
 
     # hyperparameters
     embedding_dimension = 100

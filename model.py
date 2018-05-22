@@ -4,12 +4,24 @@ import numpy as np
 import torch
 from torch.autograd import Variable
 import torch.nn.functional as F
+from torchtext.data import Batch
 
 
 class NeuralMachineTranslator(nn.Module):
 
-    def __init__(self, embedding_dimension, vocabulary_size, sentence_length, dropout,
-                 input_size_decoder, output_size_decoder, hidden_size_decoder, batch_size):
+    def __init__(self,
+        embedding_dimension,
+        vocabulary_size,
+        sentence_length,
+        dropout,
+        input_size_decoder,
+        output_size_decoder,
+        hidden_size_decoder,
+        batch_size,
+        EOS_index,
+        max_prediction_length,
+
+    ):
         super(NeuralMachineTranslator, self).__init__()
 
         self.embedding_dimension = embedding_dimension
@@ -28,27 +40,32 @@ class NeuralMachineTranslator(nn.Module):
         self.hidden = None
         self.start = True
         self.dropout = nn.Dropout(p=dropout)
+        self.EOS = EOS_index
+        self.max_prediction_length = max_prediction_length
 
         self.context = Variable(torch.randn((1, batch_size, hidden_size_decoder)))  # TODO change!
 
-    def forward(self, input):
+    def forward(self, input: Batch, get_loss=False, teacher_forcing=False):
 
         input_sentences = input.src[0]
         input_lengths = input.src[1]
 
         batch_size = input_sentences.size()[0]
 
-        target_sentences = input.trg[0]
-        target_lengths = input.trg[1]
+        if teacher_forcing:
+            target_sentences = input.trg[0]
+            target_lengths = input.trg[1]
 
         french_sentence_length = input_sentences.size()[1]
-        english_sentence_length = target_sentences.size()[1]
 
-        mask = torch.zeros((batch_size, english_sentence_length))
-        for sentence in range(batch_size):
-            sentence_mask = [0] * int(target_lengths[sentence]) \
-                          + [1] * (english_sentence_length - int(target_lengths[sentence]))
-            mask[sentence, :] = torch.LongTensor(sentence_mask)
+        if teacher_forcing:
+            english_sentence_length = target_sentences.size()[1]
+
+            mask = torch.zeros((batch_size, english_sentence_length))
+            for sentence in range(batch_size):
+                sentence_mask = [0] * int(target_lengths[sentence]) \
+                              + [1] * (english_sentence_length - int(target_lengths[sentence]))
+                mask[sentence, :] = torch.LongTensor(sentence_mask)
 
         batch_size, sentence_length = input_sentences.size()
         encoder_outputs = []
@@ -56,9 +73,7 @@ class NeuralMachineTranslator(nn.Module):
         for word in range(french_sentence_length):
             positional_embedding = self.encoder(input_sentences[:, word], word + 1)
             encoder_outputs.append(positional_embedding)
-            average_embedding += positional_embedding
-
-        average_embedding /= sentence_length
+            average_embedding += positional_embedding / sentence_length
 
         if self.start:
             self.hidden = Variable(torch.unsqueeze(average_embedding, 0))
@@ -70,24 +85,48 @@ class NeuralMachineTranslator(nn.Module):
 
         loss = 0
 
-        # context = torch.randn(hidden.size())  # TODO change!
+        if teacher_forcing:
+            predicted_sentence = np.zeros((batch_size, english_sentence_length))
+        else:
+            predicted_sentence = np.zeros((batch_size, self.max_prediction_length))
 
-        predicted_sentence = np.zeros((batch_size, english_sentence_length))
+        # for word in range(english_sentence_length):
 
-        for word in range(english_sentence_length):
+        has_eos = np.array([False] * batch_size)
+        word = -1
+        while not all(has_eos):
+
+            word += 1
+            if teacher_forcing and word > english_sentence_length: break
+            if word > self.max_prediction_length: break
+
             self.hidden = self.attention(encoder_outputs, self.hidden)
+
+            if teacher_forcing:
+                output = torch.unsqueeze(torch.unsqueeze(target_sentences[:, word], 0), 2).float()
+            else:
+                output = average_embedding
+
             output, self.hidden, self.context = self.decoder(
-                torch.unsqueeze(torch.unsqueeze(target_sentences[:, word], 0), 2).float(),
+                output,
                 self.hidden,
-                self.context
+                self.context,
+                teacher_forcing
             )
 
             output = self.softmax(output)
-            batch_loss = self.criterion(torch.squeeze(output), target_sentences[:, word])
-            batch_loss.masked_fill_(Variable(mask[:, word].byte()), 0.)
-            loss += batch_loss.sum() / batch_size
+
+            if get_loss:
+                batch_loss = self.criterion(torch.squeeze(output), target_sentences[:, word])
+                batch_loss.masked_fill_(Variable(mask[:, word].byte()), 0.)
+                loss += batch_loss.sum() / batch_size
+            else:
+                loss = None
 
             predicted_sentence[:, word] = torch.argmax(torch.squeeze(output, 0), 1)
+
+            has_eos |= (predicted_sentence[:, word] == self.EOS)
+
 
         return predicted_sentence, loss
 
@@ -156,14 +195,16 @@ class Decoder(nn.Module):
 
     def __init__(self, input_size, hidden_size, output_size):
         super(Decoder, self).__init__()
-        self.lstm = nn.LSTM(input_size=100, hidden_size=hidden_size)
+        self.lstm = nn.LSTM(input_size=200, hidden_size=hidden_size)
         self.lstm2output = nn.Linear(hidden_size, output_size)
-        self.embedding = nn.Embedding(input_size, 100)
+        self.embedding = nn.Embedding(input_size, 200)
 
-    def forward(self, input, hidden, context):
+    def forward(self, input, hidden, context, teacher_forcing):
 
-        input_embedding = self.embedding(torch.squeeze(input.long()))
-        result, (hidden, context) = self.lstm(torch.unsqueeze(input_embedding, 0), (hidden, context))
+        if teacher_forcing:
+            input = self.embedding(torch.squeeze(input.long()))
+
+        result, (hidden, context) = self.lstm(torch.unsqueeze(input, 0), (hidden, context))
         output = self.lstm2output(result)
 
         return output, hidden, context
