@@ -54,7 +54,7 @@ class NeuralMachineTranslator(nn.Module):
         self.EOS = EOS_index
         self.SOS = SOS_index
 
-    def forward(self, input: Batch, get_loss=False, teacher_forcing=False):
+    def forward(self, input: Batch, optimizer=None, get_loss=False, teacher_forcing=False):
 
         # unpack batch
         input_sentences = input.src[0]
@@ -75,8 +75,8 @@ class NeuralMachineTranslator(nn.Module):
 
         # initialize hidden state and conetxt state with average embedding
         if self.start:
-            self.hidden = Variable(torch.unsqueeze(average_embedding, 0))
-            self.context = Variable(torch.unsqueeze(average_embedding, 0))
+            self.hidden = Variable(torch.unsqueeze(average_embedding, 0), requires_grad=True)
+            self.context = Variable(torch.unsqueeze(average_embedding, 0), requires_grad=True)
             self.start = False
 
         # detach recurrent states from history for better performance during backprop
@@ -103,6 +103,10 @@ class NeuralMachineTranslator(nn.Module):
 
         # loop until all sentences in batch have reached <EOS> token
         while not all(has_eos):
+
+            # print(word)
+            # # set gradients to zero
+            # optimizer.zero_grad()
 
             word += 1
 
@@ -153,6 +157,14 @@ class NeuralMachineTranslator(nn.Module):
                     batch_loss.masked_fill_(Variable(mask[:, word].byte()), 0.)
                     loss += batch_loss.sum() / batch_size
 
+                    # backward pass
+                    loss.backward(retain_graph=True)
+
+                    torch.nn.utils.clip_grad_norm_(self.parameters(), 5.)
+
+                    # update parameters
+                    optimizer.step()
+
                 # otherwise break out of while loop since further training will not do anything
                 else:
                     break
@@ -162,6 +174,14 @@ class NeuralMachineTranslator(nn.Module):
             # get indices for next decoder run
             if not teacher_forcing:
                 output = torch.argmax(torch.squeeze(output, 0), 1)
+
+        # if get_loss:
+        #
+        #     # backward pass
+        #     loss.backward(retain_graph=True)
+        #
+        #     # update parameters
+        #     optimizer.step()
 
         return predicted_sentence, loss
 

@@ -12,14 +12,15 @@ from helpers import get_validation_metrics
 import pickle
 import torch
 from torchtext.data import BucketIterator, interleave_keys
+from time import time
 
 Metrics = collections.namedtuple('Metrics', ['BLEU', 'TER', 'loss'])
 use_cuda = torch.cuda.is_available()
 
 
-def train(batch, model, use_teacher_forcing):
+def train(batch, model, optimizer, use_teacher_forcing):
     model.zero_grad()
-    output, loss = model(batch, teacher_forcing=use_teacher_forcing, get_loss=True)
+    output, loss = model(batch, optimizer=optimizer, teacher_forcing=use_teacher_forcing, get_loss=True)
 
     return output, loss
 
@@ -37,8 +38,6 @@ def train_epochs(
     max_iterations_per_epoch=math.inf,
     teacher_forcing=False
 ) -> Dict[int, Metrics]:
-
-    print("Start training..")
 
     n_english = len(training_data.english.vocab)
     n_french = len(training_data.french.vocab)
@@ -73,10 +72,13 @@ def train_epochs(
     validation_metrics = {}
     training_metrics = {}
 
+    print("Start training..")
+    start_time = time()
     for epoch in range(1, n_epochs + 1):
 
         epoch_loss = 0
         iteration_loss = 0
+
         for iteration in range(iterations_per_epoch):
 
             # set gradients to zero
@@ -86,12 +88,13 @@ def train_epochs(
             batch = next(iter(train_iterator))
 
             # forward pass
-            prediction, loss = train(batch, model, teacher_forcing)
+            prediction, loss = train(batch, model, optimizer, teacher_forcing)
 
-            # backward pass
+            # backward pass final step without retaining graph
             loss.backward()
+            torch.nn.utils.clip_grad_norm(model.parameters(), 5.)
 
-            # update parameters
+            # update parameters final step
             optimizer.step()
 
             # save losses and add predicted sentences to evaluator
@@ -99,9 +102,11 @@ def train_epochs(
             iteration_loss += loss.data[0]
             evaluator.add_sentences(batch.trg[0], prediction)
 
-            if iteration % 100 == 0:
+            if iteration % 20 == 0:
+                current_time = (time() - start_time)
                 print('batch {}/{}'.format(iteration, iterations_per_epoch))
-                print('average loss per batch: {:5.3}'.format(iteration_loss / 100))
+                print('average loss per batch: {:5.3}'.format(iteration_loss / 20))
+                print("time per batch {:3}".format(current_time))
                 iteration_loss = 0
 
         # save evaluation metrics
@@ -138,7 +143,7 @@ def train_epochs(
         )
 
         if epoch > 1 and metrics[epoch].loss > metrics[epoch - 1].loss:
-            learning_rate /= 2
+            learning_rate /= 4
             optimizer = optim.SGD(model.parameters(), lr=learning_rate)
 
         with open('training_progress.csv', 'w') as file:
@@ -182,7 +187,7 @@ if __name__ == "__main__":
     max_sentence_length = 150
     max_iterations_per_epoch = 30
     dropout = 0
-    initial_learning_rate = 0.05
+    initial_learning_rate = 0.01
     teacher_forcing = True
 
     # get data
