@@ -63,7 +63,7 @@ def train_epochs(
         batch_size,
         training_data.english.vocab.stoi['<EOS>'],
         training_data.english.vocab.stoi['<SOS>'],
-        training_data.english.vocab.stoi['<PAD>'],
+        training_data.english.vocab.stoi['<PAD./>'],
         max_prediction_length=max_sentence_length
     )
 
@@ -76,12 +76,12 @@ def train_epochs(
     training_metrics = {}
 
     print("Start training..")
-    start_time = time()
     for epoch in range(1, n_epochs + 1):
 
         epoch_loss = 0
         iteration_loss = 0
 
+        start_time = time()
         for iteration in range(iterations_per_epoch):
 
             # set gradients to zero
@@ -106,12 +106,13 @@ def train_epochs(
             iteration_loss += loss.data[0]
             evaluator.add_sentences(batch.trg[0], prediction)
 
-            if iteration % 20 == 0:
-                current_time = (time() - start_time)
+            if iteration > 1 and iteration % 200 == 0:
+                current_time = (time() - start_time) / 200
                 print('batch {}/{}'.format(iteration, iterations_per_epoch))
-                print('average loss per batch: {:5.3}'.format(iteration_loss / 20))
+                print('average loss per batch: {:5.3}'.format(iteration_loss / 200))
                 print("time per batch {:3}".format(current_time))
                 iteration_loss = 0
+                start_time = time()
 
         # save evaluation metrics
         metrics[epoch] = Metrics(evaluator.bleu(), evaluator.ter(), float(epoch_loss))
