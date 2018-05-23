@@ -1,3 +1,5 @@
+from abc import abstractmethod
+
 import torch.nn as nn
 from torch import FloatTensor, LongTensor
 import numpy as np
@@ -171,9 +173,10 @@ class NeuralMachineTranslator(nn.Module):
         return predicted_sentence, loss
 
 
-class PositionalEncoder(nn.Module):
+class Encoder(nn.Module):
+
     def __init__(self, embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index):
-        super(PositionalEncoder, self).__init__()
+        super(Encoder, self).__init__()
 
         # hyper parameter settings
         self.sentence_length = sentence_length
@@ -181,6 +184,22 @@ class PositionalEncoder(nn.Module):
         self.vocabulary_size = vocabulary_size
         self.dropout = nn.Dropout(p=dropout)
         self.max_positions = 100
+        self.pad_index = PAD_index
+
+    @abstractmethod
+    def forward(self, input, input_position):
+        raise NotImplementedError
+
+
+class GRUEncoder(nn.Module):
+    pass
+
+
+class PositionalEncoder(Encoder):
+
+    def __init__(self, embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index):
+
+        super(PositionalEncoder, self).__init__(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
 
         # layers
         self.input_embedding = nn.Embedding(vocabulary_size, embedding_dimension, padding_idx=PAD_index)
