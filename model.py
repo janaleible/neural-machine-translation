@@ -20,6 +20,7 @@ class NeuralMachineTranslator(nn.Module):
         batch_size,
         EOS_index,
         SOS_index,
+        PAD_index,
         max_prediction_length
     ):
         super(NeuralMachineTranslator, self).__init__()
@@ -36,10 +37,15 @@ class NeuralMachineTranslator(nn.Module):
         self.batch_size = batch_size
         self.max_prediction_length = max_prediction_length
 
+        # indices of special tokens
+        self.EOS = EOS_index
+        self.SOS = SOS_index
+        self.PAD = PAD_index
+
         # get model attributes
-        self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout)
+        self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
         self.attention = Attention(embedding_dimension)
-        self.decoder = Decoder(input_size_decoder, hidden_size_decoder, output_size_decoder, dropout, SOS_index)
+        self.decoder = Decoder(input_size_decoder, hidden_size_decoder, output_size_decoder, dropout, SOS_index, PAD_index)
         self.softmax = nn.LogSoftmax(dim=2)
 
         # loss function
@@ -49,10 +55,6 @@ class NeuralMachineTranslator(nn.Module):
         self.hidden = None
         self.context = None
         self.start = True
-
-        # indices of special tokens
-        self.EOS = EOS_index
-        self.SOS = SOS_index
 
     def forward(self, input: Batch, optimizer=None, get_loss=False, teacher_forcing=False):
 
@@ -82,6 +84,8 @@ class NeuralMachineTranslator(nn.Module):
         # detach recurrent states from history for better performance during backprop
         self.hidden = repackage_hidden(self.hidden)
         self.context = repackage_hidden(self.context)
+        self.hidden = self.hidden.detach()
+        self.context = self.context.detach()
 
         # initialize loss
         loss = 0
@@ -105,9 +109,6 @@ class NeuralMachineTranslator(nn.Module):
         while not all(has_eos):
 
             # print(word)
-            # # set gradients to zero
-            # optimizer.zero_grad()
-
             word += 1
 
             # stop loop if prediction has certain length
@@ -157,13 +158,13 @@ class NeuralMachineTranslator(nn.Module):
                     batch_loss.masked_fill_(Variable(mask[:, word].byte()), 0.)
                     loss += batch_loss.sum() / batch_size
 
-                    # backward pass
-                    loss.backward(retain_graph=True)
-
-                    torch.nn.utils.clip_grad_norm_(self.parameters(), 5.)
-
-                    # update parameters
-                    optimizer.step()
+                    # # # backward pass
+                    # loss.backward(retain_graph=True)
+                    #
+                    # torch.nn.utils.clip_grad_norm_(self.parameters(), 5.)
+                    #
+                    # # update parameters
+                    # optimizer.step()
 
                 # otherwise break out of while loop since further training will not do anything
                 else:
@@ -175,19 +176,11 @@ class NeuralMachineTranslator(nn.Module):
             if not teacher_forcing:
                 output = torch.argmax(torch.squeeze(output, 0), 1)
 
-        # if get_loss:
-        #
-        #     # backward pass
-        #     loss.backward(retain_graph=True)
-        #
-        #     # update parameters
-        #     optimizer.step()
-
         return predicted_sentence, loss
 
 
 class PositionalEncoder(nn.Module):
-    def __init__(self, embedding_dimension, vocabulary_size, sentence_length, dropout):
+    def __init__(self, embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index):
         super(PositionalEncoder, self).__init__()
 
         # hyper parameter settings
@@ -198,8 +191,8 @@ class PositionalEncoder(nn.Module):
         self.max_positions = 100
 
         # layers
-        self.input_embedding = nn.Embedding(vocabulary_size, embedding_dimension)
-        self.positional_embedding = nn.Embedding(self.max_positions, embedding_dimension)
+        self.input_embedding = nn.Embedding(vocabulary_size, embedding_dimension, padding_idx=PAD_index)
+        self.positional_embedding = nn.Embedding(self.max_positions, embedding_dimension, padding_idx=PAD_index)
 
     def forward(self, input, input_position):
 
@@ -255,13 +248,13 @@ class Attention(nn.Module):
 
 class Decoder(nn.Module):
 
-    def __init__(self, input_size, hidden_size, output_size, dropout, SOS_index):
+    def __init__(self, input_size, hidden_size, output_size, dropout, SOS_index, PAD_index):
         super(Decoder, self).__init__()
 
         # layers
         self.lstm = nn.LSTM(input_size=200, hidden_size=hidden_size)
         self.lstm2output = nn.Linear(hidden_size, output_size)
-        self.embedding = nn.Embedding(input_size, 200)
+        self.embedding = nn.Embedding(input_size, 200, padding_idx=PAD_index)
         self.dropout = nn.Dropout(p=dropout)
 
         # <SOS> token needed to feed decoder if no teacher forcing is used

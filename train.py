@@ -19,7 +19,7 @@ use_cuda = torch.cuda.is_available()
 
 
 def train(batch, model, optimizer, use_teacher_forcing):
-    model.zero_grad()
+
     output, loss = model(batch, optimizer=optimizer, teacher_forcing=use_teacher_forcing, get_loss=True)
 
     return output, loss
@@ -63,8 +63,11 @@ def train_epochs(
         batch_size,
         training_data.english.vocab.stoi['<EOS>'],
         training_data.english.vocab.stoi['<SOS>'],
-        max_prediction_length=50
+        training_data.english.vocab.stoi['<PAD>'],
+        max_prediction_length=max_sentence_length
     )
+
+    model.train()
 
     optimizer = optim.SGD(model.parameters(), lr=learning_rate)
 
@@ -83,6 +86,7 @@ def train_epochs(
 
             # set gradients to zero
             optimizer.zero_grad()
+            model.zero_grad()
 
             # get next batch
             batch = next(iter(train_iterator))
@@ -90,7 +94,7 @@ def train_epochs(
             # forward pass
             prediction, loss = train(batch, model, optimizer, teacher_forcing)
 
-            # backward pass final step without retaining graph
+            # # backward pass final step without retaining graph
             loss.backward()
             torch.nn.utils.clip_grad_norm(model.parameters(), 5.)
 
@@ -184,10 +188,10 @@ if __name__ == "__main__":
     embedding_dimension = 100
     batch_size = 32
     epochs = 50
-    max_sentence_length = 150
+    max_sentence_length = 30
     max_iterations_per_epoch = 30
     dropout = 0
-    initial_learning_rate = 0.01
+    initial_learning_rate = 0.1
     teacher_forcing = True
 
     # get data
