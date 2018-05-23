@@ -23,7 +23,7 @@ class Predictor:
 
     def predict(self, data: Batch) -> np.ndarray:
         self.model.eval()
-        prediction, _ = self.model(data, teacher_forcing=False)
+        prediction, _ = self.model(data, get_loss=False, teacher_forcing=False)
         return prediction
 
 
@@ -41,20 +41,20 @@ if __name__ == "__main__":
         data = TestData("data/BPE/test/test.BPE", training_data.english.vocab, training_data.french.vocab)
     else:
         raise ValueError('Unknown dataset, pick one of validation/test')
-    with open('output/model_epoch2.pickle', 'rb') as file:
+    with open('output/model_epoch6.pickle', 'rb') as file:
         model = pickle.load(file)
 
     model.EOS = training_data.english.vocab.stoi['<EOS>']
-    model.max_prediction_length = 50
+    model.max_prediction_length = 30
     model.start = True
     model.batch_size = len(data)
 
-    input_data = next(iter(BucketIterator(
+    input_data = BucketIterator(
         dataset=data,
-        batch_size=len(data),
+        batch_size=1,
         train=True,
         sort_key=lambda x: interleave_keys(len(x.src), len(x.trg))
-    )))
+    )
 
     training_batches = next(iter(BucketIterator(
         dataset=training_data,
@@ -67,6 +67,10 @@ if __name__ == "__main__":
     evaluator = Evaluator(training_data.english.vocab)
 
     # evaluator.add_sentences(input_data.trg[0], predictor.predict(input_data))
-    evaluator.add_sentences(training_batches.trg[0], predictor.predict(training_batches))
-    evaluator.write_to_file("output/validation_predictions_epoch{}".format(2))
+    for i in range(len(data)):
+        sentence = next(iter(input_data))
+        evaluator.add_sentences(sentence.trg[0], predictor.predict(sentence))
+
+    evaluator.write_to_file("output/validation_predictions_epoch{}".format(6))
+    print(evaluator.bleu())
     print('')

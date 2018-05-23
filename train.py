@@ -70,6 +70,11 @@ def train_epochs(
     model.train()
 
     optimizer = optim.SGD(model.parameters(), lr=learning_rate)
+    print("Parameters to train: ")
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            print(name)
+    print()
 
     metrics = {}
     validation_metrics = {}
@@ -96,14 +101,14 @@ def train_epochs(
 
             # # backward pass final step without retaining graph
             loss.backward()
-            torch.nn.utils.clip_grad_norm(model.parameters(), 5.)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 5.)
 
             # update parameters final step
             optimizer.step()
 
             # save losses and add predicted sentences to evaluator
-            epoch_loss += loss.data[0]
-            iteration_loss += loss.data[0]
+            epoch_loss += loss.item()
+            iteration_loss += loss.item()
             evaluator.add_sentences(batch.trg[0], prediction)
 
             if iteration > 1 and iteration % 200 == 0:
@@ -192,7 +197,7 @@ if __name__ == "__main__":
     max_sentence_length = 30
     max_iterations_per_epoch = 30
     dropout = 0
-    initial_learning_rate = 0.1
+    initial_learning_rate = 0.2
     teacher_forcing = True
 
     # get data

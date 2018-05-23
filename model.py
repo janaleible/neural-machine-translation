@@ -49,7 +49,7 @@ class NeuralMachineTranslator(nn.Module):
         self.softmax = nn.LogSoftmax(dim=2)
 
         # loss function
-        self.criterion = nn.NLLLoss(size_average=False, reduce=False)
+        self.criterion = nn.CrossEntropyLoss(size_average=False, reduce=False)
 
         # initialize hidden states
         self.hidden = None
@@ -135,7 +135,7 @@ class NeuralMachineTranslator(nn.Module):
                 self.context,
                 teacher_forcing
             )
-            output = self.softmax(output)
+            # output = self.softmax(output)
 
             # get predicted words from decoder output
             predicted_sentence[:, word] = torch.argmax(torch.squeeze(output, 0), 1)
@@ -157,14 +157,6 @@ class NeuralMachineTranslator(nn.Module):
                     batch_loss = self.criterion(torch.squeeze(output), target_sentences[:, word])
                     batch_loss.masked_fill_(Variable(mask[:, word].byte()), 0.)
                     loss += batch_loss.sum() / batch_size
-
-                    # # # backward pass
-                    # loss.backward(retain_graph=True)
-                    #
-                    # torch.nn.utils.clip_grad_norm_(self.parameters(), 5.)
-                    #
-                    # # update parameters
-                    # optimizer.step()
 
                 # otherwise break out of while loop since further training will not do anything
                 else:
@@ -263,7 +255,6 @@ class Decoder(nn.Module):
     def forward(self, input, hidden, context, teacher_forcing):
 
         if len(input) > 0:
-
             # get input embeddings
             input = self.embedding(torch.squeeze(input.long()))
         else:
@@ -274,6 +265,9 @@ class Decoder(nn.Module):
             input = self.embedding(input.long())
 
         input = self.dropout(input)
+
+        if len(input.size()) == 1:
+            input = torch.unsqueeze(input, 0)
         result, (hidden, context) = self.lstm(torch.unsqueeze(input, 0), (hidden, context))
         output = self.lstm2output(result)
 
@@ -282,4 +276,4 @@ class Decoder(nn.Module):
 
 def repackage_hidden(h):
     """Wraps hidden states in new Variables, to detach them from their history."""
-    return Variable(h.data)
+    return Variable(h.data, requires_grad=True)
