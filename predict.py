@@ -34,6 +34,7 @@ if __name__ == "__main__":
     training_data = ParallelData('data/BPE/train/train.BPE')
     training_data.french.build_vocab(training_data, max_size=80000)
     training_data.english.build_vocab(training_data, max_size=40000)
+    eos_token = training_data.english.vocab.stoi["<EOS>"]
 
     if dataset == 'validation':
         data = TestData("data/BPE/valid/val.BPE", training_data.english.vocab, training_data.french.vocab)
@@ -41,19 +42,15 @@ if __name__ == "__main__":
         data = TestData("data/BPE/test/test.BPE", training_data.english.vocab, training_data.french.vocab)
     else:
         raise ValueError('Unknown dataset, pick one of validation/test')
-    with open('output/model_epoch4.pickle', 'rb') as file:
+    with open('output/model_epoch1.pickle', 'rb') as file:
         model = pickle.load(file)
 
-    model.EOS = training_data.english.vocab.stoi['<EOS>']
-    model.max_prediction_length = 30
-    model.start = True
-    model.batch_size = len(data)
-
+    batch_size = 32
     input_data = BucketIterator(
         dataset=data,
-        batch_size=len(data),
-        train=True,
-        sort_key=lambda x: interleave_keys(len(x.src), len(x.trg))
+        train=False,
+        batch_size=batch_size,
+        # sort_key=lambda x: interleave_keys(len(x.src), len(x.trg))
     )
 
     training_batches = next(iter(BucketIterator(
@@ -67,11 +64,11 @@ if __name__ == "__main__":
     evaluator = Evaluator(training_data.english.vocab)
 
     # evaluator.add_sentences(input_data.trg[0], predictor.predict(input_data))
-    for i in range(len(data)):
+    for i in range((len(data) // batch_size) + 1):
         sentence = next(iter(input_data))
-        evaluator.add_sentences(sentence.trg[0], predictor.predict(sentence))
+        evaluator.add_sentences(sentence.trg[0], predictor.predict(sentence), eos_token)
 
-    evaluator.write_to_file("output/validation_predictions_epoch{}".format(4))
+    evaluator.write_to_file("output/validation_predictions_epoch{}".format(1))
     print('bleu:', evaluator.bleu())
     print('ter: ', evaluator.ter())
     print('')

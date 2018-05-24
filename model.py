@@ -46,9 +46,9 @@ class NeuralMachineTranslator(nn.Module):
         self.PAD = PAD_index
 
         # get model attributes
-        # self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
         self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
-        self.attention = Attention(embedding_dimension)
+        # self.encoder = GRUEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
+        self.attention = LinearAttention(embedding_dimension)
         self.decoder = Decoder(input_size_decoder, hidden_size_decoder, output_size_decoder, dropout, SOS_index, PAD_index)
         self.softmax = nn.LogSoftmax(dim=2)
 
@@ -58,9 +58,9 @@ class NeuralMachineTranslator(nn.Module):
         # initialize hidden states
         self.hidden = None
         self.context = None
-        self.start = True
+        # self.start = True
 
-    def forward(self, input: Batch, optimizer=None, get_loss=False, teacher_forcing=False):
+    def forward(self, input: Batch, get_loss=False, teacher_forcing=False):
 
         # unpack batch
         input_sentences = input.src[0]
@@ -73,11 +73,9 @@ class NeuralMachineTranslator(nn.Module):
         # encoder
         encoder_output, word_encodings = self.encoder.encode(input_sentences, sentence_length)
 
-        # initialize hidden state and conetxt state with average embedding
-        if self.start:
-            self.hidden = Variable(torch.unsqueeze(encoder_output, 0), requires_grad=True)
-            self.context = Variable(torch.unsqueeze(encoder_output, 0), requires_grad=True)
-            self.start = False
+        # init hidden with average embedding
+        self.hidden = Variable(torch.unsqueeze(encoder_output, 0))
+        self.context = Variable(torch.unsqueeze(encoder_output, 0))
 
         # detach recurrent states from history for better performance during backprop
         self.hidden = repackage_hidden(self.hidden)
@@ -94,6 +92,7 @@ class NeuralMachineTranslator(nn.Module):
         else:
             predicted_sentence_length = self.max_prediction_length
 
+        # initialize matrix for saving predicted sentences
         predicted_sentence = np.zeros((batch_size, predicted_sentence_length))
 
         # array to keep track of which sentences in the batch has reached the <EOS> token
@@ -280,6 +279,17 @@ class Attention(nn.Module):
         super(Attention, self).__init__()
         self.attention_layer = nn.Linear(4 * embedding_dimension, 2 * embedding_dimension)
 
+    @abstractmethod
+    def forward(self, input, hidden):
+        raise NotImplementedError
+
+
+class LinearAttention(Attention):
+
+    def __init__(self, embedding_dimension):
+        super(LinearAttention, self).__init__(embedding_dimension)
+        self.attention_layer = nn.Linear(4 * embedding_dimension, 2 * embedding_dimension)
+
     def forward(self, input, hidden):
 
         sentence_length = len(input)
@@ -296,6 +306,47 @@ class Attention(nn.Module):
 
             # dot product attention
             attention_weight = torch.bmm(input[i].view(batch_size, 1, embedding_dimension), hidden.view(batch_size, embedding_dimension, 1))
+            attention_weights[:, i] = torch.squeeze(torch.squeeze(attention_weight, 1), 1)
+
+        # softmax to make them sum to one
+        attention_weights = F.softmax(attention_weights, dim=1)
+
+        # get weighted sum of input words in sentence
+        weighted_sum = Variable(FloatTensor(torch.zeros(embedding_dimension))).repeat(batch_size, 1)
+        for i in range(sentence_length):
+            weighted_sum += torch.squeeze(torch.unsqueeze(attention_weights[:, i], 1) * input[i])
+
+        # project back to original hidden layer size
+        concatenation = torch.cat((torch.unsqueeze(weighted_sum, 0), hidden), 2)
+        result = self.attention_layer(concatenation)
+
+        return result
+
+
+class BilinearAttention(Attention):
+
+    def __init__(self, embedding_dimension):
+        super(BilinearAttention, self).__init__(embedding_dimension)
+        self.linear_transform = nn.Linear(2 * embedding_dimension, 2 * embedding_dimension, bias=False)
+
+    def forward(self, input, hidden):
+
+        sentence_length = len(input)
+
+        # bsz = 1
+        if len(input[0].size()) == 1:
+            input[0] = torch.unsqueeze(input[0], 0)
+
+        batch_size, embedding_dimension = input[0].size()
+
+        # get attention weights
+        attention_weights = Variable(FloatTensor(torch.zeros(sentence_length))).repeat(batch_size, 1)
+        for i in range(sentence_length):
+
+            # bi-linear attention
+            lhs_attention = self.linear_transform(input[i])
+            attention_weight = torch.bmm(lhs_attention.view(batch_size, 1, embedding_dimension),
+                                         hidden.view(batch_size, embedding_dimension, 1))
             attention_weights[:, i] = torch.squeeze(torch.squeeze(attention_weight, 1), 1)
 
         # softmax to make them sum to one

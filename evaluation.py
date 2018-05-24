@@ -21,7 +21,6 @@ class Evaluator:
         batch_size = target_batch.size()[0]
 
         for sentence in range(batch_size):
-
             indices = np.where(predicted_batch[sentence, :] == float(eos_token))[0]
             if len(indices) >= 1:
                 eos_index = int(np.where(predicted_batch[sentence, :] == float(eos_token))[0][0])

@@ -18,9 +18,9 @@ Metrics = collections.namedtuple('Metrics', ['BLEU', 'TER', 'loss'])
 use_cuda = torch.cuda.is_available()
 
 
-def train(batch, model, optimizer, use_teacher_forcing):
+def train(batch, model, use_teacher_forcing):
 
-    output, loss = model(batch, optimizer=optimizer, teacher_forcing=use_teacher_forcing, get_loss=True)
+    output, loss = model(batch, teacher_forcing=use_teacher_forcing, get_loss=True)
 
     return output, loss
 
@@ -45,6 +45,7 @@ def train_epochs(
     # iterators
     train_iterator = BucketIterator(dataset=training_data, batch_size=batch_size,
                                     sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=True)
+
     validation_data = TestData("data/BPE/valid/val.BPE", training_data.english.vocab, training_data.french.vocab)
     validation_iterations = (len(validation_data) // batch_size) + 1
     validation_iterator = BucketIterator(dataset=validation_data, batch_size=batch_size,
@@ -97,7 +98,7 @@ def train_epochs(
             batch = next(iter(train_iterator))
 
             # forward pass
-            prediction, loss = train(batch, model, optimizer, teacher_forcing)
+            prediction, loss = train(batch, model, teacher_forcing)
 
             # # backward pass final step without retaining graph
             loss.backward()
@@ -109,7 +110,7 @@ def train_epochs(
             # save losses and add predicted sentences to evaluator
             epoch_loss += loss.item()
             iteration_loss += loss.item()
-            evaluator.add_sentences(batch.trg[0], prediction)
+            evaluator.add_sentences(batch.trg[0], prediction, model.EOS)
 
             if iteration > 1 and iteration % 200 == 0:
                 current_time = (time() - start_time) / 200
@@ -121,9 +122,9 @@ def train_epochs(
 
         # save evaluation metrics
         metrics[epoch] = Metrics(evaluator.bleu(), evaluator.ter(), float(epoch_loss))
-
         evaluator.write_to_file('output/predictions_epoch{}'.format(epoch))
 
+        # clear sentences from evaluator
         evaluator.clear_sentences()
 
         print(
