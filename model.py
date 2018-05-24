@@ -2,12 +2,41 @@ from abc import abstractmethod
 from typing import List
 
 import torch.nn as nn
+from copy import deepcopy
 from torch import FloatTensor, LongTensor
 import numpy as np
 import torch
 from torch.autograd import Variable
 import torch.nn.functional as F
 from torchtext.data import Batch
+
+
+class Hypothesis:
+
+    def __init__(self, word: LongTensor, probability: FloatTensor, predecessor, hidden, context):
+        self.word = word
+        self.word_probability = probability
+        self.predecessor = predecessor
+        self.hidden = hidden
+        self.context = context
+
+        self.sequence, self.probability = self._get_sequence()
+
+    def _get_sequence(self) -> (np.ndarray, np.ndarray):
+
+        if isinstance(self.predecessor, Hypothesis):
+            predecessor_sequence, predecessor_probability = self.predecessor._get_sequence()
+            return np.concatenate((predecessor_sequence, self.word), axis=1), self.word_probability * predecessor_probability
+
+        else:
+            return self.word, self.word_probability
+
+    def has_eos(self, eos_index):
+
+        if isinstance(self.predecessor, Hypothesis):
+            return self.predecessor.has_eos(eos_index) | np.reshape((self.word == eos_index), 32)
+        else:
+            return np.reshape((self.word == eos_index), -1)
 
 
 class NeuralMachineTranslator(nn.Module):
@@ -24,7 +53,8 @@ class NeuralMachineTranslator(nn.Module):
         EOS_index,
         SOS_index,
         PAD_index,
-        max_prediction_length
+        max_prediction_length,
+        beam_size=1
     ):
         super(NeuralMachineTranslator, self).__init__()
 
@@ -59,6 +89,9 @@ class NeuralMachineTranslator(nn.Module):
         self.hidden = None
         self.context = None
         self.start = True
+
+        self.search_stacks = {}
+        self.beam_size = beam_size
 
     def forward(self, input: Batch, optimizer=None, get_loss=False, teacher_forcing=False):
 
@@ -103,8 +136,17 @@ class NeuralMachineTranslator(nn.Module):
         # initialize output for decoder
         output = []
 
+        hypotheses_have_eos = [False]
+
+        # stacks for beamsearch, initialise with SOS hypothesis with probability 1
+        self.search_stacks = {
+            -1: [Hypothesis(
+                np.reshape([self.SOS] * self.batch_size, (batch_size, 1)), 1, None, self.hidden, self.context
+            )]
+        }
+
         # loop until all sentences in batch have reached <EOS> token
-        while not all(has_eos):
+        while not all(hypotheses_have_eos):
 
             # print(word)
             word += 1
@@ -126,19 +168,35 @@ class NeuralMachineTranslator(nn.Module):
                     gold_standard = target_sentences[:, word - 1]
                 output = torch.unsqueeze(torch.unsqueeze(gold_standard, 0), 2).float()
 
-            # decoder
-            output, self.hidden, self.context = self.decoder(
-                output,
-                self.hidden,
-                self.context,
-                teacher_forcing
-            )
+            for predecessor_hypothesis in self.search_stacks[word - 1]:
+                output, self.hidden, self.context = self.decoder(
+                    output,
+                    predecessor_hypothesis.hidden,
+                    predecessor_hypothesis.context,
+                    teacher_forcing
+                )
 
-            # get predicted words from decoder output
-            predicted_sentence[:, word] = torch.argmax(torch.squeeze(output, 0), 1)
+                # get predicted words from decoder output
+                self.search_stacks[word] = []
+                search_space = deepcopy(torch.squeeze(output.detach()).numpy())
+
+                predictions = np.argpartition(search_space, -self.beam_size, axis=1)[:, -self.beam_size:]
+
+                probabilities = []
+                for batch_index, prediction in enumerate(predictions):
+                    probabilities.append(search_space[batch_index, prediction])
+
+                self.search_stacks[word].append(
+                    Hypothesis(predictions, np.array(probabilities), predecessor_hypothesis, self.hidden, self.context)
+                )
+
+
+            if len(self.search_stacks[word]) > self.beam_size:
+                self.search_stacks[word] = sorted(self.search_stacks[word], key=lambda hypothesis: hypothesis.probability)[:self.beam_size]
 
             # updating which sentences from batch have reached <EOS> token
-            has_eos |= (predicted_sentence[:, word] == self.EOS)
+            current_stack = self.search_stacks[word]
+            hypotheses_have_eos = [all(hypothesis.has_eos(self.EOS)) for hypothesis in current_stack]
 
             if get_loss:
 
@@ -165,7 +223,12 @@ class NeuralMachineTranslator(nn.Module):
             if not teacher_forcing:
                 output = torch.argmax(torch.squeeze(output, 0), 1)
 
-        return predicted_sentence, loss
+        top_hypothesis = self.search_stacks[-1][0]
+        for hypothesis in self.search_stacks[-1]:
+            if hypothesis.probability > top_hypothesis.probability:
+                top_hypothesis = hypothesis
+
+        return top_hypothesis.sequence, loss
 
 
 class Encoder(nn.Module):
