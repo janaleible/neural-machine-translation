@@ -11,7 +11,7 @@ from parallel_data import ParallelData, TestData
 from helpers import get_validation_metrics
 import pickle
 import torch
-from torchtext.data import BucketIterator, interleave_keys
+from torchtext.data import BucketIterator, Iterator, interleave_keys
 from time import time
 
 Metrics = collections.namedtuple('Metrics', ['BLEU', 'TER', 'loss'])
@@ -43,13 +43,13 @@ def train_epochs(
     n_french = len(training_data.french.vocab)
 
     # iterators
-    train_iterator = BucketIterator(dataset=training_data, batch_size=batch_size,
+    train_iterator = Iterator(dataset=training_data, batch_size=batch_size,
                                     sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=True)
 
     validation_data = TestData("data/BPE/valid/val.BPE", training_data.english.vocab, training_data.french.vocab)
     validation_iterations = (len(validation_data) // batch_size) + 1
-    validation_iterator = BucketIterator(dataset=validation_data, batch_size=batch_size,
-                                         sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=False)
+    validation_iterator = Iterator(dataset=validation_data, batch_size=batch_size,
+                                         sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=True)
 
     iterations_per_epoch = min(max_iterations_per_epoch, (len(training_data) // batch_size) + 1)
 

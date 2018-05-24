@@ -5,7 +5,7 @@ import sys
 
 import numpy as np
 from torchtext.data import Batch
-from torchtext.data import BucketIterator
+from torchtext.data import BucketIterator, Iterator
 from torchtext.data import interleave_keys
 
 from evaluation import Evaluator
@@ -39,14 +39,13 @@ if __name__ == "__main__":
         data = TestData("data/BPE/test/test.BPE", training_data.english.vocab, training_data.french.vocab)
     else:
         raise ValueError('Unknown dataset, pick one of validation/test')
-    with open('output/model_epoch1.pickle', 'rb') as file:
+    with open('output/model_epoch3.pickle', 'rb') as file:
         model = pickle.load(file)
 
-    batch_size = 32
+    batch_size = 1
     input_data = BucketIterator(
         dataset=data,
-        train=False,
-        sort=False,
+        train=True,
         batch_size=batch_size
     )
 
@@ -56,17 +55,26 @@ if __name__ == "__main__":
         train=True,
         sort_key=lambda x: interleave_keys(len(x.src), len(x.trg))
     )))
+    with open('test.txt', 'w') as file:
 
-    predictor = Predictor(model)
-    evaluator = Evaluator(training_data.english.vocab)
+        predictor = Predictor(model)
+        evaluator = Evaluator(training_data.english.vocab, training_data.french.vocab)
 
-    # evaluator.add_sentences(input_data.trg[0], predictor.predict(input_data))
-    for i in range((len(data) // batch_size) + 1):
-        sentence = next(iter(input_data))
-        predicted_sentence, _ = predictor.predict(sentence)
-        evaluator.add_sentences(sentence.trg[0], predicted_sentence, eos_token)
+        # evaluator.add_sentences(input_data.trg[0], predictor.predict(input_data))
+        for i in range((len(data) // batch_size) + 1):
+            sentence = next(iter(input_data))
+            predicted_sentence, _ = predictor.predict(sentence)
+            evaluator.add_sentences(sentence.trg[0], predicted_sentence, eos_token)
+        #
+        # for i in range((len(data) // batch_size) + 1):
+        #     sentence = next(iter(input_data))
+        #     src, trg = evaluator.convert_sentences(sentence)
+        #     file.write(' '.join(src) + '\n')
+        #     file.write(' '.join(trg) + '\n')
+        #     file.write('\n')
 
-    evaluator.write_to_file("output/validation_predictions_epoch{}".format(1))
-    print('bleu:', evaluator.bleu())
-    print('ter: ', evaluator.ter())
-    print('')
+        evaluator.write_to_file("output/validation_predictions_epoch{}".format(3))
+        print(evaluator.bleu_test("output/validation_predictions_epoch3.hyp", "output/validation_predictions_epoch3.ref"))
+        print('bleu:', evaluator.bleu())
+        print('ter: ', evaluator.ter())
+        print('')

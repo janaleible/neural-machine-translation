@@ -34,7 +34,7 @@ if __name__ == "__main__":
     batch_size = 1
     input_data = BucketIterator(
         dataset=data,
-        train=False,
+        train=True,
         batch_size=batch_size,
         # sort_key=lambda x: interleave_keys(len(x.src), len(x.trg))
     )
@@ -50,10 +50,11 @@ if __name__ == "__main__":
     evaluator = Evaluator(training_data.english.vocab, training_data.french.vocab)
 
     # evaluator.add_sentences(input_data.trg[0], predictor.predict(input_data))
-    for i in range(1):
+    for i in range(10):
         sentence = next(iter(input_data))
         predicted_sentence, attention = predictor.predict(sentence)
         evaluator.add_sentences(sentence.trg[0], predicted_sentence, attention=attention)
 
-    for sentence in evaluator.attention_weights:
-        evaluator.plot_attention(sentence)
+    attentions = len(evaluator.attention_weights)
+    for i in range(attentions):
+        evaluator.plot_attention(evaluator.attention_weights[i])

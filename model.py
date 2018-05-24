@@ -105,7 +105,7 @@ class NeuralMachineTranslator(nn.Module):
         # initialize output for decoder
         output = []
 
-        sentence_attention_weights = np.zeros((batch_size, predicted_sentence_length, french_sentence_length))
+        sentence_attention_weights = torch.zeros((batch_size, predicted_sentence_length, french_sentence_length))
 
         # loop until all sentences in batch have reached <EOS> token
         while not all(has_eos):
@@ -121,7 +121,7 @@ class NeuralMachineTranslator(nn.Module):
             self.hidden, attention_weights = self.attention(word_encodings, self.hidden)
 
             to_pad = attention_weights.size()[1]
-            sentence_attention_weights[:, word, :to_pad] = attention_weights.detach().numpy()
+            sentence_attention_weights[:, word, :to_pad] = attention_weights
 
             # if teacher forcing is used get previous gold standard word of target sentence
             if teacher_forcing:
