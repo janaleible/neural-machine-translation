@@ -20,7 +20,7 @@ use_cuda = torch.cuda.is_available()
 
 def train(batch, model, use_teacher_forcing):
 
-    output, loss = model(batch, teacher_forcing=use_teacher_forcing, get_loss=True)
+    output, loss, _ = model(batch, teacher_forcing=use_teacher_forcing, get_loss=True)
 
     return output, loss
 
@@ -213,8 +213,8 @@ if __name__ == "__main__":
     torch.save(training_data.english.vocab, 'pickles/english_vocab.txt')
 
     # initialize evaluators
-    evaluator = Evaluator(training_data.english.vocab)
-    validation_evaluator = Evaluator(training_data.english.vocab)
+    evaluator = Evaluator(training_data.english.vocab, training_data.french.vocab)
+    validation_evaluator = Evaluator(training_data.english.vocab, training_data.french.vocab)
 
     # train
     train_epochs(

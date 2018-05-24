@@ -5,18 +5,23 @@ from lib.pyter import ter
 from nltk.translate.bleu_score import corpus_bleu
 from torch import Tensor
 from torchtext.vocab import Vocab
+import collections
+import matplotlib.pyplot as plt
+
+AttentionWeights = collections.namedtuple('AttentionWeights', ['weights', 'target', 'predicted'])
 
 
 class Evaluator:
 
-    def __init__(self, english_vocabulary: Vocab):
+    def __init__(self, english_vocabulary: Vocab, french_vocabulary: Vocab):
 
         self.english_vocabulary = english_vocabulary
-
+        self.french_vocabulary = french_vocabulary
         self.target_sentences = []
         self.translated_sentences = []
+        self.attention_weights = []
 
-    def add_sentences(self, target_batch: Tensor, predicted_batch: np.ndarray, eos_token=2):
+    def add_sentences(self, target_batch: Tensor, predicted_batch: np.ndarray, eos_token=2, attention=None):
 
         batch_size = target_batch.size()[0]
 
@@ -27,11 +32,23 @@ class Evaluator:
             else:
                 eos_index = -1
             sentence_without_padding = predicted_batch[sentence, :eos_index]
-            self.target_sentences.append(self.index2Text(target_batch[sentence, :]))
-            self.translated_sentences.append(self.index2Text(sentence_without_padding))
+            translated_sentence_text = self.index2Text(sentence_without_padding, "english")
+            target_sentence_text = self.index2Text(target_batch[sentence, :], "english")
+            if attention is not None:
+                input_sentence = self.index2Text(attention.input.detach().numpy()[0], "french")
+                self.attention_weights.append(AttentionWeights(np.squeeze(attention.weights),
+                                                               input_sentence,
+                                                               translated_sentence_text))
+            self.target_sentences.append(target_sentence_text)
+            self.translated_sentences.append(translated_sentence_text)
 
-    def index2Text(self, sentence_indices: []) -> []:
-        sentence_bpe = [self.english_vocabulary.itos[int(index)] for index in filter(lambda index: int(index) is not self.english_vocabulary.stoi['<PAD>'], sentence_indices)]
+    def index2Text(self, sentence_indices: [], language: str) -> []:
+
+        if language == "french":
+            vocabulary = self.french_vocabulary
+        else:
+            vocabulary = self.english_vocabulary
+        sentence_bpe = [vocabulary.itos[int(index)] for index in filter(lambda index: int(index) is not vocabulary.stoi['<PAD>'], sentence_indices)]
 
         parsed = []
         subword_stack = ''
@@ -78,6 +95,36 @@ class Evaluator:
 
         with open(path + '.hyp', 'w') as file:
             for sentence in self.translated_sentences:
+                file.write(' '.join(sentence) + '\n')
+
+    def plot_attention(self, attention: AttentionWeights):
+        """
+        Plots the scatterplot of each measurement against each other measurement
+        """
+        predicted_sentence = attention.predicted
+        target_sentence = attention.target
+        weights = attention.weights
+        n_predicted = len(predicted_sentence)
+        n_target = len(target_sentence)
+        weight_matrix = np.zeros((n_predicted, n_target))
+        for i in range(len(predicted_sentence)):
+            for j in range(len(target_sentence)):
+                weight_matrix[i][j] = weights[i][j]
+        plt.imshow(weight_matrix)
+        plt.xticks(range(n_target), tuple(target_sentence))
+        plt.yticks(range(n_predicted), tuple(predicted_sentence))
+        plt.show()
+
+    def visualize_attention(self, path):
+
+        directory = path.split('/')[:-1]
+        path_to_file = os.path.join(*directory)
+
+        if not os.path.exists(path_to_file):
+            os.makedirs(path_to_file)
+
+        with open(path + '.ref', 'w') as file:
+            for sentence in self.target_sentences:
                 file.write(' '.join(sentence) + '\n')
 
     def clear_sentences(self):

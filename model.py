@@ -8,6 +8,9 @@ import torch
 from torch.autograd import Variable
 import torch.nn.functional as F
 from torchtext.data import Batch
+import collections
+
+AttentionWeights = collections.namedtuple('AttentionWeights', ['weights', 'input', 'predicted'])
 
 
 class NeuralMachineTranslator(nn.Module):
@@ -46,9 +49,9 @@ class NeuralMachineTranslator(nn.Module):
         self.PAD = PAD_index
 
         # get model attributes
-        self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
-        # self.encoder = GRUEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
-        self.attention = LinearAttention(embedding_dimension)
+        # self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
+        self.encoder = GRUEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
+        self.attention = BilinearAttention(embedding_dimension)
         self.decoder = Decoder(input_size_decoder, hidden_size_decoder, output_size_decoder, dropout, SOS_index, PAD_index)
         self.softmax = nn.LogSoftmax(dim=2)
 
@@ -102,6 +105,8 @@ class NeuralMachineTranslator(nn.Module):
         # initialize output for decoder
         output = []
 
+        sentence_attention_weights = np.zeros((batch_size, predicted_sentence_length, french_sentence_length))
+
         # loop until all sentences in batch have reached <EOS> token
         while not all(has_eos):
 
@@ -113,7 +118,10 @@ class NeuralMachineTranslator(nn.Module):
             if word >= self.max_prediction_length: break
 
             # attention
-            self.hidden = self.attention(word_encodings, self.hidden)
+            self.hidden, attention_weights = self.attention(word_encodings, self.hidden)
+
+            to_pad = attention_weights.size()[1]
+            sentence_attention_weights[:, word, :to_pad] = attention_weights.detach().numpy()
 
             # if teacher forcing is used get previous gold standard word of target sentence
             if teacher_forcing:
@@ -164,7 +172,7 @@ class NeuralMachineTranslator(nn.Module):
             if not teacher_forcing:
                 output = torch.argmax(torch.squeeze(output, 0), 1)
 
-        return predicted_sentence, loss
+        return predicted_sentence, loss, AttentionWeights(sentence_attention_weights, input_sentences, predicted_sentence)
 
 
 class Encoder(nn.Module):
@@ -320,7 +328,7 @@ class LinearAttention(Attention):
         concatenation = torch.cat((torch.unsqueeze(weighted_sum, 0), hidden), 2)
         result = self.attention_layer(concatenation)
 
-        return result
+        return result, attention_weights
 
 
 class BilinearAttention(Attention):
@@ -361,7 +369,7 @@ class BilinearAttention(Attention):
         concatenation = torch.cat((torch.unsqueeze(weighted_sum, 0), hidden), 2)
         result = self.attention_layer(concatenation)
 
-        return result
+        return result, attention_weights
 
 
 class Decoder(nn.Module):

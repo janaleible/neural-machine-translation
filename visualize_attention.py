@@ -1,27 +1,16 @@
+import matplotlib.pyplot as plt
 import pickle
-from typing import Tuple
-
 import sys
 
-import numpy as np
-from torchtext.data import Batch
+import collections
 from torchtext.data import BucketIterator
 from torchtext.data import interleave_keys
 
+from predict import Predictor
 from evaluation import Evaluator
-from model import NeuralMachineTranslator
 from parallel_data import ParallelData, TestData
 
-
-class Predictor:
-
-    def __init__(self, model: NeuralMachineTranslator):
-        self.model = model
-
-    def predict(self, data: Batch) -> Tuple[np.ndarray, np.ndarray]:
-        self.model.eval()
-        prediction, _, attention = self.model(data, get_loss=False, teacher_forcing=False)
-        return prediction, attention
+AttentionWeights = collections.namedtuple('AttentionWeights', ['weights', 'target', 'predicted'])
 
 
 if __name__ == "__main__":
@@ -42,12 +31,12 @@ if __name__ == "__main__":
     with open('output/model_epoch1.pickle', 'rb') as file:
         model = pickle.load(file)
 
-    batch_size = 32
+    batch_size = 1
     input_data = BucketIterator(
         dataset=data,
         train=False,
-        sort=False,
-        batch_size=batch_size
+        batch_size=batch_size,
+        # sort_key=lambda x: interleave_keys(len(x.src), len(x.trg))
     )
 
     training_batches = next(iter(BucketIterator(
@@ -58,15 +47,13 @@ if __name__ == "__main__":
     )))
 
     predictor = Predictor(model)
-    evaluator = Evaluator(training_data.english.vocab)
+    evaluator = Evaluator(training_data.english.vocab, training_data.french.vocab)
 
     # evaluator.add_sentences(input_data.trg[0], predictor.predict(input_data))
-    for i in range((len(data) // batch_size) + 1):
+    for i in range(1):
         sentence = next(iter(input_data))
-        predicted_sentence, _ = predictor.predict(sentence)
-        evaluator.add_sentences(sentence.trg[0], predicted_sentence, eos_token)
+        predicted_sentence, attention = predictor.predict(sentence)
+        evaluator.add_sentences(sentence.trg[0], predicted_sentence, attention=attention)
 
-    evaluator.write_to_file("output/validation_predictions_epoch{}".format(1))
-    print('bleu:', evaluator.bleu())
-    print('ter: ', evaluator.ter())
-    print('')
+    for sentence in evaluator.attention_weights:
+        evaluator.plot_attention(sentence)
