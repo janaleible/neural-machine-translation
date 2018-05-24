@@ -63,7 +63,7 @@ def train_epochs(
         batch_size,
         training_data.english.vocab.stoi['<EOS>'],
         training_data.english.vocab.stoi['<SOS>'],
-        training_data.english.vocab.stoi['<PAD./>'],
+        training_data.english.vocab.stoi['<PAD>'],
         max_prediction_length=max_sentence_length
     )
 

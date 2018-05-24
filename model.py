@@ -47,7 +47,7 @@ class NeuralMachineTranslator(nn.Module):
 
         # get model attributes
         # self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
-        self.encoder = GRUEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
+        self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
         self.attention = Attention(embedding_dimension)
         self.decoder = Decoder(input_size_decoder, hidden_size_decoder, output_size_decoder, dropout, SOS_index, PAD_index)
         self.softmax = nn.LogSoftmax(dim=2)
@@ -133,7 +133,6 @@ class NeuralMachineTranslator(nn.Module):
                 self.context,
                 teacher_forcing
             )
-            # output = self.softmax(output)
 
             # get predicted words from decoder output
             predicted_sentence[:, word] = torch.argmax(torch.squeeze(output, 0), 1)
@@ -284,6 +283,11 @@ class Attention(nn.Module):
     def forward(self, input, hidden):
 
         sentence_length = len(input)
+
+        # bsz = 1
+        if len(input[0].size()) == 1:
+            input[0] = torch.unsqueeze(input[0], 0)
+
         batch_size, embedding_dimension = input[0].size()
 
         # get attention weights
