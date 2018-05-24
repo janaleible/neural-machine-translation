@@ -1,3 +1,6 @@
+from abc import abstractmethod
+from typing import List
+
 import torch.nn as nn
 from torch import FloatTensor, LongTensor
 import numpy as np
@@ -43,6 +46,7 @@ class NeuralMachineTranslator(nn.Module):
         self.PAD = PAD_index
 
         # get model attributes
+        # self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
         self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
         self.attention = Attention(embedding_dimension)
         self.decoder = Decoder(input_size_decoder, hidden_size_decoder, output_size_decoder, dropout, SOS_index, PAD_index)
@@ -67,18 +71,12 @@ class NeuralMachineTranslator(nn.Module):
         batch_size, sentence_length = input_sentences.size()
 
         # encoder
-        encoder_outputs = []
-        average_embedding = Variable(FloatTensor(torch.zeros(2 * self.embedding_dimension))).repeat(batch_size, 1)
-        for word in range(french_sentence_length):
-            positional_embedding = self.encoder(input_sentences[:, word], word + 1)
-            positional_embedding = self.dropout(positional_embedding)
-            encoder_outputs.append(positional_embedding)
-            average_embedding += positional_embedding / sentence_length
+        encoder_output, word_encodings = self.encoder.encode(input_sentences, sentence_length)
 
         # initialize hidden state and conetxt state with average embedding
         if self.start:
-            self.hidden = Variable(torch.unsqueeze(average_embedding, 0), requires_grad=True)
-            self.context = Variable(torch.unsqueeze(average_embedding, 0), requires_grad=True)
+            self.hidden = Variable(torch.unsqueeze(encoder_output, 0), requires_grad=True)
+            self.context = Variable(torch.unsqueeze(encoder_output, 0), requires_grad=True)
             self.start = False
 
         # detach recurrent states from history for better performance during backprop
@@ -116,7 +114,7 @@ class NeuralMachineTranslator(nn.Module):
             if word >= self.max_prediction_length: break
 
             # attention
-            self.hidden = self.attention(encoder_outputs, self.hidden)
+            self.hidden = self.attention(word_encodings, self.hidden)
 
             # if teacher forcing is used get previous gold standard word of target sentence
             if teacher_forcing:
@@ -135,7 +133,6 @@ class NeuralMachineTranslator(nn.Module):
                 self.context,
                 teacher_forcing
             )
-            # output = self.softmax(output)
 
             # get predicted words from decoder output
             predicted_sentence[:, word] = torch.argmax(torch.squeeze(output, 0), 1)
@@ -171,9 +168,10 @@ class NeuralMachineTranslator(nn.Module):
         return predicted_sentence, loss
 
 
-class PositionalEncoder(nn.Module):
+class Encoder(nn.Module):
+
     def __init__(self, embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index):
-        super(PositionalEncoder, self).__init__()
+        super(Encoder, self).__init__()
 
         # hyper parameter settings
         self.sentence_length = sentence_length
@@ -181,12 +179,84 @@ class PositionalEncoder(nn.Module):
         self.vocabulary_size = vocabulary_size
         self.dropout = nn.Dropout(p=dropout)
         self.max_positions = 100
+        self.pad_index = PAD_index
+
+    @abstractmethod
+    def forward(self, input: LongTensor, input_position: int):
+        raise NotImplementedError
+
+    @abstractmethod
+    def encode(self, input_sentences, sentence_lengths) -> (FloatTensor, List[FloatTensor]):
+        raise NotImplementedError
+
+
+class GRUEncoder(Encoder):
+
+    def __init__(self, embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index):
+        super(GRUEncoder, self).__init__(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
+
+        self.input_embedding = nn.Embedding(vocabulary_size, embedding_dimension, padding_idx=PAD_index)
+        self.GRU = nn.GRU(
+            input_size=embedding_dimension,
+            hidden_size=embedding_dimension,
+            num_layers=1,
+            bias=True,
+            dropout=dropout,
+            bidirectional=True
+        )
+
+    def forward(self, input: LongTensor, input_position: int) -> FloatTensor:
+
+        embedding = self.input_embedding(input.t())
+        output, final_hidden_states = self.GRU(embedding)
+
+        return output, final_hidden_states
+
+    def encode(self, input_sentences, sentence_lengths) -> (FloatTensor, List[FloatTensor]):
+
+        sequence_length = input_sentences.size()[1]
+
+        output, hidden_states = self.forward(input_sentences, 0)
+
+        word_encodings = []
+        for word_index in range(sequence_length):
+            word_encodings.append(
+                torch.squeeze(output[word_index, :, :], dim=0)
+            )
+
+        # concatenate final hidden states from left-to-right and right-to-left pass through GRU
+        final_hidden_state = torch.cat([hidden_states[0, :, :], hidden_states[1, :, :]], 1)
+
+        return final_hidden_state, word_encodings
+
+
+class PositionalEncoder(Encoder):
+
+    def __init__(self, embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index):
+
+        super(PositionalEncoder, self).__init__(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
 
         # layers
         self.input_embedding = nn.Embedding(vocabulary_size, embedding_dimension, padding_idx=PAD_index)
         self.positional_embedding = nn.Embedding(self.max_positions, embedding_dimension, padding_idx=PAD_index)
 
-    def forward(self, input, input_position):
+    def encode(self, input_sentences, sentence_lengths) -> (FloatTensor, List[FloatTensor]):
+
+        batch_size = input_sentences.size()[0]
+        french_sentence_length = input_sentences.size()[1]
+
+        word_encodings = []
+        average_encoding = Variable(FloatTensor(torch.zeros(2 * self.embedding_dimension))).repeat(batch_size, 1)
+        for word in range(french_sentence_length):
+            positional_embedding = self.forward(input_sentences[:, word], word + 1)
+            # positional_embedding = self.dropout(positional_embedding) #TODO: handle dropout
+            word_encodings.append(positional_embedding)
+            average_encoding += positional_embedding / sentence_lengths
+        #TODO: cannot sum up over all words in batch and divide by actual sentence length (add 0 if token is <PAD>)
+
+        return average_encoding, word_encodings
+
+    def forward(self, input: LongTensor, input_position: int) -> FloatTensor:
 
         batch_size = input.size()[0]
 
@@ -213,6 +283,11 @@ class Attention(nn.Module):
     def forward(self, input, hidden):
 
         sentence_length = len(input)
+
+        # bsz = 1
+        if len(input[0].size()) == 1:
+            input[0] = torch.unsqueeze(input[0], 0)
+
         batch_size, embedding_dimension = input[0].size()
 
         # get attention weights

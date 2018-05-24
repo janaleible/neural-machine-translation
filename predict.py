@@ -41,7 +41,7 @@ if __name__ == "__main__":
         data = TestData("data/BPE/test/test.BPE", training_data.english.vocab, training_data.french.vocab)
     else:
         raise ValueError('Unknown dataset, pick one of validation/test')
-    with open('output/model_epoch6.pickle', 'rb') as file:
+    with open('output/model_epoch4.pickle', 'rb') as file:
         model = pickle.load(file)
 
     model.EOS = training_data.english.vocab.stoi['<EOS>']
@@ -51,7 +51,7 @@ if __name__ == "__main__":
 
     input_data = BucketIterator(
         dataset=data,
-        batch_size=1,
+        batch_size=len(data),
         train=True,
         sort_key=lambda x: interleave_keys(len(x.src), len(x.trg))
     )
@@ -71,6 +71,7 @@ if __name__ == "__main__":
         sentence = next(iter(input_data))
         evaluator.add_sentences(sentence.trg[0], predictor.predict(sentence))
 
-    evaluator.write_to_file("output/validation_predictions_epoch{}".format(6))
-    print(evaluator.bleu())
+    evaluator.write_to_file("output/validation_predictions_epoch{}".format(4))
+    print('bleu:', evaluator.bleu())
+    print('ter: ', evaluator.ter())
     print('')

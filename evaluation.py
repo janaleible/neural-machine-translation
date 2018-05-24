@@ -16,13 +16,20 @@ class Evaluator:
         self.target_sentences = []
         self.translated_sentences = []
 
-    def add_sentences(self, target_batch: Tensor, predicted_batch: np.ndarray):
+    def add_sentences(self, target_batch: Tensor, predicted_batch: np.ndarray, eos_token=2):
 
         batch_size = target_batch.size()[0]
 
         for sentence in range(batch_size):
+
+            indices = np.where(predicted_batch[sentence, :] == float(eos_token))[0]
+            if len(indices) >= 1:
+                eos_index = int(np.where(predicted_batch[sentence, :] == float(eos_token))[0][0])
+            else:
+                eos_index = -1
+            sentence_without_padding = predicted_batch[sentence, :eos_index]
             self.target_sentences.append(self.index2Text(target_batch[sentence, :]))
-            self.translated_sentences.append(self.index2Text(predicted_batch[sentence, :]))
+            self.translated_sentences.append(self.index2Text(sentence_without_padding))
 
     def index2Text(self, sentence_indices: []) -> []:
         sentence_bpe = [self.english_vocabulary.itos[int(index)] for index in filter(lambda index: int(index) is not self.english_vocabulary.stoi['<PAD>'], sentence_indices)]
