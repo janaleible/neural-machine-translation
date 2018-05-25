@@ -203,6 +203,7 @@ class GRUEncoder(Encoder):
         super(GRUEncoder, self).__init__(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
 
         self.input_embedding = nn.Embedding(vocabulary_size, embedding_dimension, padding_idx=PAD_index)
+        self.dropout = nn.Dropout(p=dropout)
         self.GRU = nn.GRU(
             input_size=embedding_dimension,
             hidden_size=embedding_dimension,
@@ -215,6 +216,7 @@ class GRUEncoder(Encoder):
     def forward(self, input: LongTensor, input_position: int) -> FloatTensor:
 
         embedding = self.input_embedding(input.t())
+        embedding = self.dropout(embedding)
         output, final_hidden_states = self.GRU(embedding)
 
         return output, final_hidden_states
@@ -244,6 +246,7 @@ class PositionalEncoder(Encoder):
         super(PositionalEncoder, self).__init__(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
 
         # layers
+        self.dropout = nn.Dropout(p=dropout)
         self.input_embedding = nn.Embedding(vocabulary_size, embedding_dimension, padding_idx=PAD_index)
         self.positional_embedding = nn.Embedding(self.max_positions, embedding_dimension, padding_idx=PAD_index)
 
@@ -269,7 +272,7 @@ class PositionalEncoder(Encoder):
 
         # word embedding
         embedding = self.input_embedding(input)
-
+        embedding = self.dropout(embedding)
         # positional embedding
         positions = Variable(LongTensor(np.array([input_position]))).repeat(batch_size, 1)
         positional_encoding = self.positional_embedding(positions)
