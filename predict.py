@@ -47,11 +47,12 @@ if __name__ == "__main__":
     model.EOS = training_data.english.vocab.stoi['<EOS>']
     model.max_prediction_length = 30
     model.start = True
-    model.batch_size = len(data)
+    model.batch_size = 1
+    model.beam_size = 10
 
     input_data = BucketIterator(
         dataset=data,
-        batch_size=len(data),
+        batch_size=1,
         train=True,
         sort_key=lambda x: interleave_keys(len(x.src), len(x.trg))
     )
