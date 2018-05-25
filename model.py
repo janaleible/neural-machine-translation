@@ -169,10 +169,9 @@ class NeuralMachineTranslator(nn.Module):
                     gold_standard = target_sentences[:, word - 1]
                 output = torch.unsqueeze(torch.unsqueeze(gold_standard, 0), 2).float()
 
+            # Beam search
+            self.search_stacks[word] = []
             for predecessor_hypothesis in self.search_stacks[word - 1]:
-
-                # Beam search
-                self.search_stacks[word] = []
 
                 if predecessor_hypothesis.has_eos:
                     # if a sentence is already complete, do not make further predictions and do not update probability
@@ -202,7 +201,7 @@ class NeuralMachineTranslator(nn.Module):
                         ))
 
             if len(self.search_stacks[word]) > self.beam_size:
-                self.search_stacks[word] = sorted(self.search_stacks[word], key=lambda hypothesis: hypothesis.probability)[:self.beam_size]
+                self.search_stacks[word] = sorted(self.search_stacks[word], key=lambda hypothesis: hypothesis.probability, reverse=True)[:self.beam_size]
 
             current_stack = self.search_stacks[word]
             hypotheses_have_eos = [hypothesis.has_eos for hypothesis in current_stack]
