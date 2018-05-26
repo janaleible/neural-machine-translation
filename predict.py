@@ -59,7 +59,7 @@ if __name__ == "__main__":
 
     training_batches = next(iter(BucketIterator(
         dataset=training_data,
-        batch_size=10,
+        batch_size=1,
         train=True,
         sort_key=lambda x: interleave_keys(len(x.src), len(x.trg))
     )))

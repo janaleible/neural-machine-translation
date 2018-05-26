@@ -40,6 +40,208 @@ class Hypothesis:
             return int(self.word) == eos_index
 
 
+class Search:
+
+    def __init__(self, attention):
+        self.attention = attention
+
+    @abstractmethod
+    def search(self, model, word_encodings):
+        raise NotImplementedError
+
+
+class GreedySearch(Search):
+
+    def search(self,
+        model,
+        word_encodings,
+        batch_size,
+        teacher_forcing,
+        english_sentence_length,
+        french_sentence_length,
+        get_loss,
+        target_sentences,
+        target_lengths
+    ):
+
+        # if teacher forcing is used, predicted sentence length will be maximally english sentence length
+        if teacher_forcing:
+            predicted_sentence_length = english_sentence_length
+        else:
+            predicted_sentence_length = model.max_prediction_length
+
+        # initialize matrix for saving predicted sentences
+        predicted_sentence = np.zeros((batch_size, predicted_sentence_length))
+
+        # array to keep track of which sentences in the batch has reached the <EOS> token
+        has_eos = np.array([False] * batch_size)
+        word = -1
+
+        # initialize output for decoder
+        output = []
+
+        sentence_attention_weights = torch.zeros((batch_size, predicted_sentence_length, french_sentence_length))
+
+        # loop until all sentences in batch have reached <EOS> token
+        while not all(has_eos):
+
+            # print(word)
+            word += 1
+
+            # stop loop if prediction has certain length
+            if teacher_forcing and word >= english_sentence_length: break
+            if word >= model.max_prediction_length: break
+
+            # attention
+            model.hidden, attention_weights = self.attention(word_encodings, model.hidden)
+
+            to_pad = attention_weights.size()[1]
+            sentence_attention_weights[:, word, :to_pad] = attention_weights
+
+            # if teacher forcing is used get previous gold standard word of target sentence
+            if teacher_forcing:
+                if word == 0:
+
+                    # <SOS> token is initial gold standard word
+                    gold_standard = Variable(LongTensor([model.SOS])).repeat(batch_size)
+                else:
+                    gold_standard = target_sentences[:, word - 1]
+                output = torch.unsqueeze(torch.unsqueeze(gold_standard, 0), 2).float()
+
+            # decoder
+            output, self.hidden, self.context = model.decoder(
+                output,
+                model.hidden,
+                model.context,
+                teacher_forcing
+            )
+
+            # get predicted words from decoder output
+            predicted_sentence[:, word] = torch.argmax(torch.squeeze(output, 0), 1)
+
+            # updating which sentences from batch have reached <EOS> token
+            has_eos |= (predicted_sentence[:, word] == model.EOS)
+
+            loss = 0
+            if get_loss:
+
+                # prepare mask for padding
+                mask = torch.zeros((batch_size, english_sentence_length))
+                for sentence in range(batch_size):
+                    sentence_mask = [0] * int(target_lengths[sentence]) \
+                                    + [1] * (english_sentence_length - int(target_lengths[sentence]))
+                    mask[sentence, :] = torch.LongTensor(sentence_mask)
+
+                # get loss if predicted sentence is not longer than target sentence
+                if not word >= english_sentence_length:
+                    batch_loss = model.criterion(torch.squeeze(output), target_sentences[:, word])
+                    batch_loss.masked_fill_(Variable(mask[:, word].byte()), 0.)
+                    loss += batch_loss.sum() / batch_size
+
+                # otherwise break out of while loop since further training will not do anything
+                else:
+                    break
+
+            # get indices for next decoder run
+            if not teacher_forcing:
+                output = torch.argmax(torch.squeeze(output, 0), 1)
+
+        return predicted_sentence, loss
+
+
+class BeamSearch(Search):
+
+    def __init__(
+            self,
+            attention,
+            beam_size: int,
+    ):
+        super(BeamSearch, self).__init__(attention)
+
+        self.beam_size = beam_size
+        self.search_stacks = {}
+
+    def search(
+        self,
+        model,
+        word_encodings,
+    ):
+
+        if not model.batch_size == 1:
+            raise ValueError('Cannot use BeamSearch with batches larger than 1')
+
+        # array to keep track of which hypotheses in the batch has reached the <EOS> token
+        hypotheses_have_eos = [False]
+
+        # stacks for beamsearch, initialise with SOS hypothesis with probability 1
+        self.search_stacks = {
+            -1: [Hypothesis(
+                torch.LongTensor([model.SOS]), 1, None, model.hidden, model.context, model.EOS
+            )]
+        }
+
+        # loop until all sentences in batch have reached <EOS> token
+        word = -1
+        while not all(hypotheses_have_eos):
+
+            word += 1
+            if word >= model.max_prediction_length: break
+
+            # attention
+            model.hidden = self.attention(word_encodings, model.hidden)
+
+            # Beam search
+            self.search_stacks[word] = []
+            for predecessor_hypothesis in self.search_stacks[word - 1]:
+
+                if predecessor_hypothesis.has_eos:
+                    # if a sentence is already complete, do not make further predictions and do not update probability
+                    self.search_stacks[word].append(predecessor_hypothesis)
+
+                else:
+                    output, self.hidden, self.context = model.decoder(
+                        predecessor_hypothesis.word,
+                        predecessor_hypothesis.hidden,
+                        predecessor_hypothesis.context,
+                        teacher_forcing=False
+                    )
+
+                    search_space = F.softmax(deepcopy(torch.squeeze(output.detach(), dim=0)), dim=1)
+                    predictions = np.reshape(np.argpartition(search_space.numpy(), -self.beam_size, axis=1)[:, -self.beam_size:], (-1))
+
+                    for i in range(self.beam_size):
+                        probability = float(search_space[:, predictions[i]])
+                        self.search_stacks[word].append(Hypothesis(
+                            torch.LongTensor([predictions[i]]),
+                            probability,
+                            predecessor_hypothesis,
+                            model.hidden,
+                            model.context,
+                            model.EOS
+                        ))
+
+            if len(self.search_stacks[word]) > self.beam_size:
+                self.search_stacks[word] = sorted(
+                    self.search_stacks[word],
+                    key=lambda hypothesis: hypothesis.probability,
+                    reverse=True
+                )[:self.beam_size]
+
+            current_stack = self.search_stacks[word]
+            hypotheses_have_eos = [hypothesis.has_eos for hypothesis in current_stack]
+
+            # get indices for next decoder run
+            output = torch.argmax(torch.squeeze(output, 0), 1)
+
+        last_stack = max(self.search_stacks.keys())
+        top_hypothesis = self.search_stacks[last_stack][0]
+        for hypothesis in self.search_stacks[last_stack]:
+            if hypothesis.probability > top_hypothesis.probability:
+                top_hypothesis = hypothesis
+
+        return top_hypothesis.sequence, None
+
+
 class NeuralMachineTranslator(nn.Module):
 
     def __init__(self,
@@ -119,125 +321,18 @@ class NeuralMachineTranslator(nn.Module):
         self.hidden = self.hidden.detach()
         self.context = self.context.detach()
 
-        # initialize loss
-        loss = 0
-
-        # if teacher forcing is used, predicted sentence length will be maximally english sentence length
-        if teacher_forcing:
-            predicted_sentence_length = english_sentence_length
-        else:
-            predicted_sentence_length = self.max_prediction_length
-
-        predicted_sentence = np.zeros((batch_size, predicted_sentence_length))
-
-        # array to keep track of which sentences in the batch has reached the <EOS> token
-        has_eos = np.array([False] * batch_size)
-        word = -1
-
-        # initialize output for decoder
-        output = []
-
-        hypotheses_have_eos = [False]
-
-        # stacks for beamsearch, initialise with SOS hypothesis with probability 1
-        self.search_stacks = {
-            -1: [Hypothesis(
-                torch.LongTensor([self.SOS] * self.batch_size), 1, None, self.hidden, self.context, self.EOS
-            )]
-        }
-
-        # loop until all sentences in batch have reached <EOS> token
-        while not all(hypotheses_have_eos):
-
-            # print(word)
-            word += 1
-
-            # stop loop if prediction has certain length
-            if teacher_forcing and word >= english_sentence_length: break
-            if word >= self.max_prediction_length: break
-
-            # attention
-            self.hidden = self.attention(word_encodings, self.hidden)
-
-            # if teacher forcing is used get previous gold standard word of target sentence
-            if teacher_forcing:
-                if word == 0:
-
-                    # <SOS> token is initial gold standard word
-                    gold_standard = Variable(LongTensor([self.SOS])).repeat(batch_size)
-                else:
-                    gold_standard = target_sentences[:, word - 1]
-                output = torch.unsqueeze(torch.unsqueeze(gold_standard, 0), 2).float()
-
-            # Beam search
-            self.search_stacks[word] = []
-            for predecessor_hypothesis in self.search_stacks[word - 1]:
-
-                if predecessor_hypothesis.has_eos:
-                    # if a sentence is already complete, do not make further predictions and do not update probability
-                    self.search_stacks[word].append(predecessor_hypothesis)
-
-                else:
-                    output, self.hidden, self.context = self.decoder(
-                        predecessor_hypothesis.word,
-                        predecessor_hypothesis.hidden,
-                        predecessor_hypothesis.context,
-                        teacher_forcing
-                    )
-
-                    search_space = F.softmax(deepcopy(torch.squeeze(output.detach(), dim=0)), dim=1)
-                    predictions = np.reshape(np.argpartition(search_space.numpy(), -self.beam_size, axis=1)[:, -self.beam_size:], (-1))
-
-                    for i in range(self.beam_size):
-
-                        probability = float(search_space[:, predictions[i]])
-                        self.search_stacks[word].append(Hypothesis(
-                            torch.LongTensor([predictions[i]]),
-                            probability,
-                            predecessor_hypothesis,
-                            self.hidden,
-                            self.context,
-                            self.EOS
-                        ))
-
-            if len(self.search_stacks[word]) > self.beam_size:
-                self.search_stacks[word] = sorted(self.search_stacks[word], key=lambda hypothesis: hypothesis.probability, reverse=True)[:self.beam_size]
-
-            current_stack = self.search_stacks[word]
-            hypotheses_have_eos = [hypothesis.has_eos for hypothesis in current_stack]
-
-            if get_loss:
-
-                # prepare mask for padding
-                mask = torch.zeros((batch_size, english_sentence_length))
-                for sentence in range(batch_size):
-                    sentence_mask = [0] * int(target_lengths[sentence]) \
-                                    + [1] * (english_sentence_length - int(target_lengths[sentence]))
-                    mask[sentence, :] = torch.LongTensor(sentence_mask)
-
-                # get loss if predicted sentence is not longer than target sentence
-                if not word >= english_sentence_length:
-                    batch_loss = self.criterion(torch.squeeze(output), target_sentences[:, word])
-                    batch_loss.masked_fill_(Variable(mask[:, word].byte()), 0.)
-                    loss += batch_loss.sum() / batch_size
-
-                # otherwise break out of while loop since further training will not do anything
-                else:
-                    break
-            else:
-                loss = None
-
-            # get indices for next decoder run
-            if not teacher_forcing:
-                output = torch.argmax(torch.squeeze(output, 0), 1)
-
-        last_stack = max(self.search_stacks.keys())
-        top_hypothesis = self.search_stacks[last_stack][0]
-        for hypothesis in self.search_stacks[last_stack]:
-            if hypothesis.probability > top_hypothesis.probability:
-                top_hypothesis = hypothesis
-
-        return top_hypothesis.sequence, loss
+        return BeamSearch(self.attention, 10).search(self, word_encodings)
+        # return GreedySearch(self.attention).search(
+        #     self,
+        #     word_encodings,
+        #     batch_size,
+        #     teacher_forcing,
+        #     english_sentence_length,
+        #     french_sentence_length,
+        #     get_loss,
+        #     target_sentences,
+        #     target_lengths
+        # )
 
 
 class Encoder(nn.Module):
