@@ -11,16 +11,16 @@ from parallel_data import ParallelData, TestData
 from helpers import get_validation_metrics
 import pickle
 import torch
-from torchtext.data import BucketIterator, interleave_keys
+from torchtext.data import BucketIterator, Iterator, interleave_keys
 from time import time
 
 Metrics = collections.namedtuple('Metrics', ['BLEU', 'TER', 'loss'])
 use_cuda = torch.cuda.is_available()
 
 
-def train(batch, model, optimizer, use_teacher_forcing):
+def train(batch, model, use_teacher_forcing):
 
-    output, loss = model(batch, optimizer=optimizer, teacher_forcing=use_teacher_forcing, get_loss=True)
+    output, loss, _ = model(batch, teacher_forcing=use_teacher_forcing, get_loss=True)
 
     return output, loss
 
@@ -43,12 +43,13 @@ def train_epochs(
     n_french = len(training_data.french.vocab)
 
     # iterators
-    train_iterator = BucketIterator(dataset=training_data, batch_size=batch_size,
+    train_iterator = Iterator(dataset=training_data, batch_size=batch_size,
                                     sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=True)
+
     validation_data = TestData("data/BPE/valid/val.BPE", training_data.english.vocab, training_data.french.vocab)
     validation_iterations = (len(validation_data) // batch_size) + 1
-    validation_iterator = BucketIterator(dataset=validation_data, batch_size=batch_size,
-                                         sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=False)
+    validation_iterator = Iterator(dataset=validation_data, batch_size=batch_size,
+                                         sort_key=lambda x: interleave_keys(len(x.src), len(x.trg)), train=True)
 
     iterations_per_epoch = min(max_iterations_per_epoch, (len(training_data) // batch_size) + 1)
 
@@ -97,7 +98,7 @@ def train_epochs(
             batch = next(iter(train_iterator))
 
             # forward pass
-            prediction, loss = train(batch, model, optimizer, teacher_forcing)
+            prediction, loss = train(batch, model, teacher_forcing)
 
             # # backward pass final step without retaining graph
             loss.backward()
@@ -109,7 +110,7 @@ def train_epochs(
             # save losses and add predicted sentences to evaluator
             epoch_loss += loss.item()
             iteration_loss += loss.item()
-            evaluator.add_sentences(batch.trg[0], prediction)
+            evaluator.add_sentences(batch.trg[0], prediction, model.EOS)
 
             if iteration > 1 and iteration % 200 == 0:
                 current_time = (time() - start_time) / 200
@@ -121,9 +122,9 @@ def train_epochs(
 
         # save evaluation metrics
         metrics[epoch] = Metrics(evaluator.bleu(), evaluator.ter(), float(epoch_loss))
-
         evaluator.write_to_file('output/predictions_epoch{}'.format(epoch))
 
+        # clear sentences from evaluator
         evaluator.clear_sentences()
 
         print(
@@ -192,7 +193,7 @@ if __name__ == "__main__":
 
     # hyper parameters
     embedding_dimension = 100
-    batch_size = 1
+    batch_size = 32
     epochs = 50
     max_sentence_length = 30
     max_iterations_per_epoch = 30
@@ -212,8 +213,8 @@ if __name__ == "__main__":
     torch.save(training_data.english.vocab, 'pickles/english_vocab.txt')
 
     # initialize evaluators
-    evaluator = Evaluator(training_data.english.vocab)
-    validation_evaluator = Evaluator(training_data.english.vocab)
+    evaluator = Evaluator(training_data.english.vocab, training_data.french.vocab)
+    validation_evaluator = Evaluator(training_data.english.vocab, training_data.french.vocab)
 
     # train
     train_epochs(
