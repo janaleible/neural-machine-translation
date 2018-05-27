@@ -17,9 +17,9 @@ class Predictor:
 
     def __init__(self, model: NeuralMachineTranslator):
         self.model = model
+        self.model.eval()
 
     def predict(self, data: Batch) -> Tuple[np.ndarray, np.ndarray]:
-        self.model.eval()
         prediction, _, attention = self.model(data, get_loss=False, teacher_forcing=False)
         return prediction, attention
 
@@ -39,7 +39,8 @@ if __name__ == "__main__":
         data = TestData("data/BPE/test/test.BPE", training_data.english.vocab, training_data.french.vocab)
     else:
         raise ValueError('Unknown dataset, pick one of validation/test')
-    with open('output/model_epoch3.pickle', 'rb') as file:
+
+    with open('output/beam_search_model.pickle', 'rb') as file:
         model = pickle.load(file)
 
     model.EOS = training_data.english.vocab.stoi['<EOS>']
@@ -47,6 +48,7 @@ if __name__ == "__main__":
     model.start = True
     model.batch_size = 1
     model.beam_size = 10
+    model.search = None
 
     input_data = BucketIterator(
         dataset=data,
@@ -60,26 +62,24 @@ if __name__ == "__main__":
         train=True,
         sort_key=lambda x: interleave_keys(len(x.src), len(x.trg))
     )))
-    with open('test.txt', 'w') as file:
 
-        predictor = Predictor(model)
-        evaluator = Evaluator(training_data.english.vocab, training_data.french.vocab)
+    predictor = Predictor(model)
+    evaluator = Evaluator(training_data.english.vocab, training_data.french.vocab)
 
-        # evaluator.add_sentences(input_data.trg[0], predictor.predict(input_data))
-        for i in range((len(data) // model.batch_size) + 1):
-            sentence = next(iter(input_data))
-            predicted_sentence, _ = predictor.predict(sentence)
-            evaluator.add_sentences(sentence.trg[0], predicted_sentence, eos_token)
-        #
-        # for i in range((len(data) // batch_size) + 1):
-        #     sentence = next(iter(input_data))
-        #     src, trg = evaluator.convert_sentences(sentence)
-        #     file.write(' '.join(src) + '\n')
-        #     file.write(' '.join(trg) + '\n')
-        #     file.write('\n')
+    # evaluator.add_sentences(input_data.trg[0], predictor.predict(input_data))
+    for i in range((len(data) // model.batch_size) + 1):
+        sentence = next(iter(input_data))
+        predicted_sentence, _ = predictor.predict(sentence)
+        evaluator.add_sentences(sentence.trg[0], predicted_sentence, eos_token)
+    #
+    # for i in range((len(data) // batch_size) + 1):
+    #     sentence = next(iter(input_data))
+    #     src, trg = evaluator.convert_sentences(sentence)
+    #     file.write(' '.join(src) + '\n')
+    #     file.write(' '.join(trg) + '\n')
+    #     file.write('\n')
 
-        evaluator.write_to_file("output/validation_predictions_epoch{}".format(3))
-        print(evaluator.bleu_test("output/validation_predictions_epoch3.hyp", "output/validation_predictions_epoch3.ref"))
-        print('bleu:', evaluator.bleu())
-        print('ter: ', evaluator.ter())
-        print('')
+    print('bleu:', evaluator.bleu())
+    print('ter: ', evaluator.ter())
+
+    evaluator.write_to_file('results/beam_search')

@@ -29,8 +29,7 @@ class Hypothesis:
     def _get_sequence(self) -> (LongTensor, FloatTensor):
 
         if isinstance(self.predecessor, Hypothesis):
-            predecessor_sequence, predecessor_probability = self.predecessor._get_sequence()
-            return torch.cat([predecessor_sequence, torch.unsqueeze(self.word, dim=1)], dim=1), self.word_probability * predecessor_probability
+            return torch.cat([self.predecessor.sequence, torch.unsqueeze(self.word, dim=1)], dim=1), self.word_probability * self.predecessor.probability
 
         else:
             return torch.unsqueeze(self.word, dim=1), self.word_probability
@@ -38,7 +37,7 @@ class Hypothesis:
     def _has_eos(self, eos_index: int) -> bool:
 
         if isinstance(self.predecessor, Hypothesis):
-            return self.predecessor._has_eos(eos_index) | int(self.word) == eos_index
+            return self.predecessor.has_eos | int(self.word) == eos_index
         else:
             return int(self.word) == eos_index
 
@@ -191,18 +190,18 @@ class BeamSearch(Search):
             if word >= model.max_prediction_length: break
 
             # attention
-            model.hidden, attention_weights = self.attention(word_encodings, model.hidden)
 
             # Beam search
             self.search_stacks[word] = []
             for predecessor_hypothesis in self.search_stacks[word - 1]:
 
+                predecessor_hypothesis.hidden, attention_weights = self.attention(word_encodings, predecessor_hypothesis.hidden)
                 if predecessor_hypothesis.has_eos:
                     # if a sentence is already complete, do not make further predictions and do not update probability
                     self.search_stacks[word].append(predecessor_hypothesis)
 
                 else:
-                    output, self.hidden, self.context = model.decoder(
+                    output, hidden, context = model.decoder(
                         predecessor_hypothesis.word,
                         predecessor_hypothesis.hidden,
                         predecessor_hypothesis.context,
@@ -218,8 +217,8 @@ class BeamSearch(Search):
                             torch.LongTensor([predictions[i]]),
                             probability,
                             predecessor_hypothesis,
-                            model.hidden,
-                            model.context,
+                            hidden,
+                            context,
                             model.EOS
                         ))
 
@@ -233,8 +232,6 @@ class BeamSearch(Search):
             current_stack = self.search_stacks[word]
             hypotheses_have_eos = [hypothesis.has_eos for hypothesis in current_stack]
 
-            # get indices for next decoder run
-            output = torch.argmax(torch.squeeze(output, 0), 1)
 
         last_stack = max(self.search_stacks.keys())
         top_hypothesis = self.search_stacks[last_stack][0]
@@ -283,7 +280,7 @@ class NeuralMachineTranslator(nn.Module):
 
         # get model attributes
         # self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
-        self.encoder = PositionalEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
+        self.encoder = GRUEncoder(embedding_dimension, vocabulary_size, sentence_length, dropout, PAD_index)
         self.attention = BilinearAttention(embedding_dimension)
         # self.attention = LinearAttention(embedding_dimension)
         self.decoder = Decoder(input_size_decoder, hidden_size_decoder, output_size_decoder, dropout, SOS_index, PAD_index)
@@ -299,6 +296,8 @@ class NeuralMachineTranslator(nn.Module):
 
         self.search_stacks = {}
         self.beam_size = beam_size
+
+        self.search = None
 
     def forward(self, input: Batch, optimizer=None, get_loss=False, teacher_forcing=False):
 
@@ -325,18 +324,21 @@ class NeuralMachineTranslator(nn.Module):
         self.hidden = self.hidden.detach()
         self.context = self.context.detach()
 
-        # return BeamSearch(self.attention, 10).search(self, word_encodings)
-        return GreedySearch(self.attention).search(
-            self,
-            word_encodings,
-            batch_size,
-            teacher_forcing,
-            english_sentence_length,
-            french_sentence_length,
-            get_loss,
-            target_sentences,
-            target_lengths
-        )
+        if self.search is None:
+            self.search = BeamSearch(self.attention, 10)
+
+        return self.search.search(self, word_encodings)
+        # return GreedySearch(self.attention).search(
+        #     self,
+        #     word_encodings,
+        #     batch_size,
+        #     teacher_forcing,
+        #     english_sentence_length,
+        #     french_sentence_length,
+        #     get_loss,
+        #     target_sentences,
+        #     target_lengths
+        # )
 
 
 class Encoder(nn.Module):
