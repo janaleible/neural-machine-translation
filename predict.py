@@ -5,7 +5,7 @@ import sys
 
 import numpy as np
 from torchtext.data import Batch
-from torchtext.data import BucketIterator, Iterator
+from torchtext.data import BucketIterator
 from torchtext.data import interleave_keys
 
 from evaluation import Evaluator
