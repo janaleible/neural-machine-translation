@@ -1,4 +1,5 @@
 .idea/
 lib/
 data/
-
+__pycache__/
+pickles/
