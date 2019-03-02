@@ -197,7 +197,7 @@ if __name__ == "__main__":
     epochs = 50
     max_sentence_length = 30
     max_iterations_per_epoch = 30
-    dropout = 0
+    dropout = 0.3
     initial_learning_rate = 0.2
     teacher_forcing = True
 
