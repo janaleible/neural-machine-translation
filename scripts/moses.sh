@@ -10,3 +10,5 @@ fi
 if [ ! -d "lib/nematus" ]; then
     wget -P lib/nematus https://raw.githubusercontent.com/EdinburghNLP/nematus/master/data/build_dictionary.py
 fi
+
+wget -P lib/ https://github.com/moses-smt/mosesdecoder/blob/master/scripts/generic/multi-bleu.perl

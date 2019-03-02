@@ -1,6 +1,5 @@
 from abc import abstractmethod
 from typing import List
-
 import torch.nn as nn
 from copy import deepcopy
 from torch import FloatTensor, LongTensor
@@ -30,7 +29,7 @@ class Hypothesis:
 
         if isinstance(self.predecessor, Hypothesis):
             return torch.cat([self.predecessor.sequence, torch.unsqueeze(self.word, dim=1)], dim=1), self.word_probability * self.predecessor.probability
-
+            
         else:
             return torch.unsqueeze(self.word, dim=1), self.word_probability
 
@@ -425,10 +424,8 @@ class PositionalEncoder(Encoder):
         average_encoding = Variable(FloatTensor(torch.zeros(2 * self.embedding_dimension))).repeat(batch_size, 1)
         for word in range(french_sentence_length):
             positional_embedding = self.forward(input_sentences[:, word], word + 1)
-            # positional_embedding = self.dropout(positional_embedding) #TODO: handle dropout
             word_encodings.append(positional_embedding)
             average_encoding += positional_embedding / sentence_lengths
-        #TODO: cannot sum up over all words in batch and divide by actual sentence length (add 0 if token is <PAD>)
 
         return average_encoding, word_encodings
 
@@ -439,6 +436,7 @@ class PositionalEncoder(Encoder):
         # word embedding
         embedding = self.input_embedding(input)
         embedding = self.dropout(embedding)
+
         # positional embedding
         positions = Variable(LongTensor(np.array([input_position]))).repeat(batch_size, 1)
         positional_encoding = self.positional_embedding(positions)
